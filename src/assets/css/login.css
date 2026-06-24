@@ -1,0 +1,497 @@
+/* ==========================================================================
+   Login Page
+   ========================================================================== */
+
+.login-page {
+  min-height: 100vh;
+  display: flex;
+}
+
+/* ==========================================================================
+   Left: Brand Panel — card-based layout
+   ========================================================================== */
+
+.login-page__aside {
+  flex: 1;
+  background: #F0F5FF;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 80px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Subtle top-right decorative glow */
+.login-page__aside::before {
+  content: '';
+  position: absolute;
+  width: 400px;
+  height: 400px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(37, 99, 235, 0.06) 0%, transparent 70%);
+  top: -120px;
+  right: -120px;
+}
+
+/* Brand header */
+.login-page__brand {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  margin-bottom: 48px;
+}
+
+.login-page__logo {
+  width: 72px;
+  height: 72px;
+  background: url(/logo.png) center / contain no-repeat;
+  margin: 0 auto 16px;
+}
+
+.login-page__logo-dot {
+  display: none;
+}
+
+.login-page__aside-title {
+  font-size: 26px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  letter-spacing: -0.02em;
+  color: #111827;
+}
+
+.login-page__aside-subtitle {
+  font-size: 14px;
+  color: #6B7280;
+  max-width: 320px;
+  line-height: 1.6;
+}
+
+/* Feature Cards */
+.login-page__features {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 420px;
+}
+
+.login-feature-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border-radius: 14px;
+  padding: 12px 16px 12px 16px;
+}
+
+
+.login-feature-card__icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: #EFF6FF;
+  color: #2563EB;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.login-feature-card__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.login-feature-card__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #111827;
+  margin: 0 0 6px 0;
+  line-height: 1.4;
+}
+
+.login-feature-card__desc {
+  font-size: 13px;
+  color: #6B7280;
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* ==========================================================================
+   Right: Form Panel
+   ========================================================================== */
+
+.login-page__form-side {
+  width: 480px;
+  min-width: 480px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 48px;
+  background: #FFFFFF;
+  border-left: 1px solid #E5E7EB;
+  position: relative;
+}
+
+/* Login Card */
+.login-card {
+  width: 100%;
+  max-width: 360px;
+}
+
+.login-card__header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.login-card__title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0 0 8px 0;
+  letter-spacing: -0.01em;
+}
+
+.login-card__subtitle {
+  font-size: 14px;
+  color: #6B7280;
+  margin: 0;
+}
+
+/* Form Row */
+.login-form__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+/* Form Submit Error */
+.login-form__error {
+  background: #FEF2F2;
+  border: 1px solid #FCA5A5;
+  color: #DC2626;
+  font-size: 13px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+/* Form Submit Success */
+.login-form__success {
+  background: #F0FDF4;
+  border: 1px solid #86EFAC;
+  color: #16A34A;
+  font-size: 13px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+/* Custom Checkbox */
+.login-checkbox-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.login-checkbox-wrapper input {
+  display: none;
+}
+
+.login-checkbox-custom {
+  width: 18px;
+  height: 18px;
+  border: 1px solid #D1D5DB;
+  border-radius: 4px;
+  background: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.login-checkbox-wrapper:hover .login-checkbox-custom {
+  border-color: #93C5FD;
+}
+
+.login-checkbox-wrapper input:checked + .login-checkbox-custom {
+  background: #2563EB;
+  border-color: #2563EB;
+}
+
+.login-checkbox-custom::after {
+  content: '✓';
+  font-size: 11px;
+  color: #FFFFFF;
+  font-weight: 700;
+  opacity: 0;
+  transform: scale(0.5);
+  transition: all 0.15s ease;
+}
+
+.login-checkbox-wrapper input:checked + .login-checkbox-custom::after {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.login-checkbox-label {
+  font-size: 13px;
+  color: #6B7280;
+}
+
+.login-link {
+  font-size: 13px;
+  color: #2563EB;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.login-link:hover {
+  color: #1D4ED8;
+  text-decoration: underline;
+}
+
+/* ==========================================================================
+   Input Fields — ref: login input color spec
+   ========================================================================== */
+
+.login-card .tyn-form-group {
+  margin-bottom: 20px;
+}
+
+.login-card .tyn-form-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 8px;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.login-card .tyn-input-wrapper {
+  position: relative;
+}
+
+.login-card .tyn-input-wrapper--icon .tyn-input-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #9CA3AF;
+  pointer-events: none;
+}
+
+.login-card .tyn-input {
+  width: 100%;
+  padding: 11px 14px 11px 42px;
+  font-size: 14px;
+  font-family: inherit;
+  color: #111827;
+  background: #F9FAFB;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  box-sizing: border-box;
+}
+
+.login-card .tyn-input::placeholder {
+  color: #9CA3AF;
+}
+
+.login-card .tyn-input:focus {
+  border-color: #3B82F6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+  background: #FFFFFF;
+}
+
+/* Error State */
+.tyn-input--error {
+  border-color: #DC2626 !important;
+}
+
+.tyn-input--error:focus {
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12) !important;
+}
+
+.tyn-input-error {
+  font-size: 12px;
+  color: #DC2626;
+  margin-top: 6px;
+  display: none;
+}
+
+.tyn-input-error--visible {
+  display: block;
+}
+
+/* ==========================================================================
+   Login Button
+   ========================================================================== */
+
+.login-card .tyn-btn--primary {
+  padding: 11px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 8px;
+  background: #2563EB;
+  color: #FFFFFF;
+  border: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(37, 99, 235, 0.2);
+  transition: all 0.15s ease;
+}
+
+.login-card .tyn-btn--primary:hover {
+  background: #3B82F6;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.10), 0 6px 18px rgba(37, 99, 235, 0.28);
+  transform: translateY(-1px);
+}
+
+.login-card .tyn-btn--primary:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.15);
+}
+
+.login-card .tyn-btn--primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* ==========================================================================
+   Sign Up CTA
+   ========================================================================== */
+
+.login-signup-cta {
+  text-align: center;
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid #E5E7EB;
+}
+
+.login-signup-cta__text {
+  font-size: 14px;
+  color: #6B7280;
+}
+
+.login-signup-cta__link {
+  color: #2563EB;
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.15s ease;
+}
+
+.login-signup-cta__link:hover {
+  color: #1D4ED8;
+  text-decoration: underline;
+}
+
+/* ==========================================================================
+   Server Settings Button
+   ========================================================================== */
+
+.login-server-btn {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 34px;
+  height: 34px;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  background: #FFFFFF;
+  color: #9CA3AF;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.login-server-btn:hover {
+  background: #F9FAFB;
+  border-color: #D1D5DB;
+  color: #374151;
+}
+
+/* Server Settings Slideover */
+.server-settings {
+  padding: 0;
+}
+
+.server-settings__desc {
+  font-size: 13px;
+  color: #6B7280;
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+
+.server-settings__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.server-settings__label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #111827;
+}
+
+.server-settings__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+
+@media (max-width: 900px) {
+  .login-page {
+    flex-direction: column;
+  }
+
+  .login-page__aside {
+    padding: 40px 24px;
+    min-height: auto;
+  }
+
+  .login-page__aside::before {
+    width: 200px;
+    height: 200px;
+    top: -80px;
+    right: -80px;
+  }
+
+  .login-page__features {
+    max-width: 100%;
+  }
+
+  .login-feature-card {
+    padding: 16px 20px;
+  }
+
+  .login-page__form-side {
+    width: 100%;
+    min-width: unset;
+    border-left: none;
+    border-top: 1px solid #E5E7EB;
+    padding: 40px 24px;
+  }
+
+  .login-card {
+    max-width: 100%;
+  }
+}

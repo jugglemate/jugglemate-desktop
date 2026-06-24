@@ -1,0 +1,45 @@
+{
+  "name": "jugglemate-agent",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "electron:dev": "ELECTRON_SKIP_BINARY_DOWNLOAD=true node node_modules/electron/cli.js .",
+    "electron:build": "npm run build && ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ electron-builder"
+  },
+  "build": {
+    "appId": "com.jugglemate.agent",
+    "productName": "JuggleMate",
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "mac": {
+      "target": ["dmg", "zip"],
+      "artifactName": "${productName}-${version}-${arch}-mac.${ext}"
+    }
+  },
+  "dependencies": {
+    "vue": "^3.5.32",
+    "vue-router": "^5.0.4",
+    "ws": "^8.21.0"
+  },
+  "devDependencies": {
+    "electron": "^35.7.5",
+    "@vitejs/plugin-vue": "^6.0.6",
+    "electron-builder": "^25.1.8",
+    "vite": "^8.0.8",
+    "vite-plugin-vue-devtools": "^8.1.1"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  }
+}

@@ -1,0 +1,1664 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JuggleMate — 智联桌面聊天中枢</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap');
+
+:root {
+  --bg-root: oklch(0.16 0.008 260);
+  --bg-surface: oklch(0.19 0.008 260);
+  --bg-elevated: oklch(0.22 0.008 260);
+  --bg-hover: oklch(0.24 0.010 260);
+  --bg-active: oklch(0.27 0.012 250);
+  --text-primary: oklch(0.92 0.004 260);
+  --text-secondary: oklch(0.65 0.008 260);
+  --text-tertiary: oklch(0.45 0.008 260);
+  --border-subtle: oklch(0.26 0.006 260);
+  --border-default: oklch(0.30 0.008 260);
+  --accent: oklch(0.68 0.18 250);
+  --accent-dim: oklch(0.55 0.14 250);
+  --accent-bg: oklch(0.25 0.06 250);
+  --danger: oklch(0.65 0.21 20);
+  --success: oklch(0.68 0.17 155);
+  --warning: oklch(0.72 0.14 85);
+  --platform-douyin: oklch(0.68 0.19 35);
+  --platform-xhs: oklch(0.68 0.19 10);
+  --platform-tg: oklch(0.68 0.16 225);
+  --agent-blue: oklch(0.65 0.16 250);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.3);
+  --shadow-md: 0 4px 12px oklch(0 0 0 / 0.4);
+  --shadow-lg: 0 8px 30px oklch(0 0 0 / 0.5);
+  --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --transition-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-smooth: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font-sans);
+  background: var(--bg-root);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Layout */
+.app-container {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* Title Bar */
+.title-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  background: var(--bg-root);
+  z-index: 100;
+  -webkit-app-region: drag;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.title-bar__brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+}
+.title-bar__brand-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-dim);
+}
+.title-bar__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  -webkit-app-region: no-drag;
+}
+.title-bar__btn {
+  width: 32px; height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+.title-bar__btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+.title-bar__logout:hover {
+  background: oklch(0.22 0.08 20);
+  color: var(--danger);
+}
+
+.title-bar__logout:hover svg {
+  stroke: var(--danger);
+}
+
+/* Sidebar */
+.sidebar {
+  width: 280px;
+  min-width: 280px;
+  height: calc(100vh - 40px);
+  margin-top: 40px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border-subtle);
+  transition: width var(--transition-smooth), min-width var(--transition-smooth);
+}
+.sidebar.collapsed {
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
+  border-right: none;
+}
+.sidebar__header {
+  padding: 16px 16px 12px;
+}
+.sidebar__search {
+  width: 100%;
+  height: 36px;
+  background: var(--bg-root);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0 12px;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+.sidebar__search::placeholder { color: var(--text-tertiary); }
+.sidebar__search:focus {
+  border-color: var(--accent-dim);
+  box-shadow: 0 0 0 2px oklch(0.4 0.12 250 / 0.2);
+}
+.sidebar__filters {
+  display: flex;
+  gap: 6px;
+  padding: 0 16px 12px;
+}
+.sidebar__filter {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-family: var(--font-sans);
+}
+.sidebar__filter:hover { background: var(--bg-hover); }
+.sidebar__filter.active {
+  background: var(--accent-bg);
+  border-color: var(--accent-dim);
+  color: var(--accent);
+}
+.sidebar__convos {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 8px;
+}
+.convo-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  position: relative;
+}
+.convo-item:hover { background: var(--bg-hover); }
+.convo-item.active { background: var(--bg-active); }
+.convo-item__avatar {
+  width: 40px; height: 40px;
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 600;
+  position: relative;
+}
+.platform-dot {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+}
+.platform-dot.douyin { background: var(--platform-douyin); }
+.platform-dot.xhs { background: var(--platform-xhs); }
+.platform-dot.tg { background: var(--platform-tg); }
+.convo-item__info {
+  flex: 1;
+  min-width: 0;
+}
+.convo-item__name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.convo-item__preview {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+.convo-item__badge {
+  min-width: 20px; height: 20px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--bg-root);
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+}
+.sidebar__groups {
+  border-top: 1px solid var(--border-subtle);
+  padding: 10px 8px;
+}
+.sidebar__groups-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+  padding: 0 12px 8px;
+}
+.group-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  font-size: 13px;
+}
+.group-item:hover { background: var(--bg-hover); }
+.group-item.active { background: var(--bg-active); }
+.group-item__icon {
+  width: 32px; height: 32px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+
+/* Main Chat */
+.main-chat {
+  flex: 1;
+  height: calc(100vh - 40px);
+  margin-top: 40px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-root);
+  min-width: 0;
+}
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  flex-shrink: 0;
+}
+.chat-header__info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.chat-header__name {
+  font-weight: 600;
+  font-size: 15px;
+}
+.chat-header__platform {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.chat-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.layout-toggle {
+  display: flex;
+  background: var(--bg-root);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  border: 1px solid var(--border-subtle);
+}
+.layout-toggle button {
+  padding: 4px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  transition: all var(--transition-fast);
+}
+.layout-toggle button.active {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+.takeover-banner {
+  background: oklch(0.22 0.05 250);
+  border: 1px solid oklch(0.35 0.10 250);
+  border-radius: var(--radius-md);
+  padding: 10px 16px;
+  margin: 12px 20px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  animation: slideDown 250ms ease-out;
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.takeover-banner__text {
+  font-size: 13px;
+  font-weight: 500;
+  color: oklch(0.8 0.06 250);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.takeover-banner__pulse {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.5); }
+}
+.btn {
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  font-family: var(--font-sans);
+  transition: all var(--transition-fast);
+}
+.btn-primary {
+  background: var(--accent);
+  color: var(--bg-root);
+}
+.btn-primary:hover { background: oklch(0.72 0.18 250); }
+.btn-outline {
+  background: transparent;
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+}
+.btn-outline:hover { background: var(--bg-hover); border-color: var(--text-tertiary); }
+.btn-danger-outline {
+  background: transparent;
+  border: 1px solid oklch(0.35 0.12 20);
+  color: var(--danger);
+}
+.btn-danger-outline:hover { background: oklch(0.22 0.08 20); }
+.btn-sm { padding: 4px 10px; font-size: 11px; }
+
+.messages-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.msg {
+  display: flex;
+  gap: 10px;
+  max-width: 75%;
+  animation: msgIn 200ms ease-out;
+}
+@keyframes msgIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.msg--incoming { align-self: flex-start; }
+.msg--outgoing { align-self: flex-end; flex-direction: row-reverse; }
+.msg--agent {
+  align-self: flex-start;
+  max-width: 80%;
+}
+.msg__avatar {
+  width: 32px; height: 32px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+}
+.msg__bubble {
+  padding: 10px 14px;
+  border-radius: var(--radius-lg);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.msg--incoming .msg__bubble {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border-bottom-left-radius: var(--radius-sm);
+}
+.msg--outgoing .msg__bubble {
+  background: oklch(0.35 0.08 250);
+  color: var(--text-primary);
+  border-bottom-right-radius: var(--radius-sm);
+}
+.msg--agent .msg__bubble {
+  background: oklch(0.20 0.04 250);
+  border: 1px solid oklch(0.35 0.10 250);
+  border-radius: var(--radius-lg);
+  border-bottom-left-radius: var(--radius-sm);
+}
+.msg__agent-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.msg__time {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  margin-top: 4px;
+}
+
+/* Agent suggestions inline */
+.agent-suggestions {
+  padding: 0 20px 12px;
+  flex-shrink: 0;
+}
+.agent-suggestions__title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-tertiary);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.agent-suggestions__title::before {
+  content: '';
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 2s ease-in-out infinite;
+}
+.suggestion-cards {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+}
+.suggestion-card {
+  flex-shrink: 0;
+  max-width: 280px;
+  padding: 10px 14px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.suggestion-card:hover {
+  border-color: var(--accent-dim);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-md);
+}
+.suggestion-card__agent {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+.suggestion-card__text {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+.suggestion-card__shortcut {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--text-tertiary);
+  background: var(--bg-root);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+}
+
+/* Chat input */
+.chat-input-area {
+  padding: 12px 20px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  flex-shrink: 0;
+}
+.chat-input-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.chat-input {
+  flex: 1;
+  min-height: 40px;
+  max-height: 120px;
+  background: var(--bg-root);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  outline: none;
+  resize: none;
+  transition: border-color var(--transition-fast);
+}
+.chat-input:focus {
+  border-color: var(--accent-dim);
+  box-shadow: 0 0 0 2px oklch(0.4 0.12 250 / 0.15);
+}
+.chat-input::placeholder { color: var(--text-tertiary); }
+.send-btn {
+  width: 40px; height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  border: none;
+  color: var(--bg-root);
+  font-size: 16px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.send-btn:hover { background: oklch(0.72 0.18 250); transform: scale(1.05); }
+
+/* Agent Panel */
+.agent-panel {
+  width: 320px;
+  min-width: 320px;
+  height: calc(100vh - 40px);
+  margin-top: 40px;
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  transition: width var(--transition-smooth), min-width var(--transition-smooth);
+}
+.agent-panel.collapsed {
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
+  border-left: none;
+}
+.agent-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.agent-panel__title {
+  font-weight: 600;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.agent-panel__header-actions {
+  display: flex;
+  gap: 6px;
+}
+.agent-panel__list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+.agent-card {
+  background: var(--bg-root);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  margin-bottom: 10px;
+  transition: all var(--transition-fast);
+}
+.agent-card:hover { border-color: var(--border-default); }
+.agent-card__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.agent-card__avatar {
+  width: 36px; height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+.agent-card__name {
+  font-weight: 600;
+  font-size: 13px;
+}
+.agent-card__role {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.agent-card__suggestion {
+  background: var(--bg-surface);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: 1px solid transparent;
+  margin-bottom: 6px;
+  line-height: 1.4;
+}
+.agent-card__suggestion:hover {
+  border-color: var(--accent-dim);
+  background: var(--bg-elevated);
+}
+.agent-card__suggestion:last-child { margin-bottom: 0; }
+.agent-panel__footer {
+  padding: 12px 18px;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  gap: 8px;
+}
+.agent-panel__footer .btn { flex: 1; }
+
+/* Modal / Slideover */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: oklch(0 0 0 / 0.5);
+  z-index: 200;
+  animation: fadeIn 150ms ease-out;
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.slideover {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 420px;
+  height: 100vh;
+  background: var(--bg-surface);
+  z-index: 201;
+  box-shadow: var(--shadow-lg);
+  animation: slideIn 300ms cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+}
+@keyframes slideIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+.slideover__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.slideover__title {
+  font-weight: 700;
+  font-size: 16px;
+}
+.slideover__close {
+  width: 32px; height: 32px;
+  border: none;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+.slideover__close:hover { background: var(--bg-active); color: var(--text-primary); }
+.slideover__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+.form-group {
+  margin-bottom: 20px;
+}
+.form-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.form-input, .form-select, .form-textarea {
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--bg-root);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+.form-input:focus, .form-select:focus, .form-textarea:focus {
+  border-color: var(--accent-dim);
+  box-shadow: 0 0 0 2px oklch(0.4 0.12 250 / 0.15);
+}
+.form-textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+.form-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23888' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 36px;
+}
+.form-hint {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 4px;
+}
+.upload-zone {
+  border: 2px dashed var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+.upload-zone:hover {
+  border-color: var(--accent-dim);
+  background: var(--bg-root);
+}
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+}
+.toggle-label {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.toggle-desc {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.toggle-switch {
+  width: 44px; height: 26px;
+  background: var(--bg-hover);
+  border-radius: 13px;
+  border: none;
+  cursor: pointer;
+  position: relative;
+  transition: background var(--transition-fast);
+}
+.toggle-switch.on { background: var(--accent); }
+.toggle-switch::after {
+  content: '';
+  position: absolute;
+  top: 3px; left: 3px;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: white;
+  transition: transform var(--transition-fast);
+}
+.toggle-switch.on::after { transform: translateX(18px); }
+.range-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.range-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  height: 6px;
+  background: var(--bg-hover);
+  border-radius: 3px;
+  outline: none;
+}
+.range-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+}
+.range-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  min-width: 32px;
+  text-align: right;
+}
+.platform-checkboxes {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.platform-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: var(--bg-root);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all var(--transition-fast);
+  user-select: none;
+}
+.platform-check:hover { border-color: var(--border-default); }
+.platform-check.checked {
+  border-color: var(--accent-dim);
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.slideover__footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  gap: 10px;
+}
+.slideover__footer .btn { flex: 1; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
+
+/* Welcome empty */
+.empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  gap: 12px;
+}
+.empty-state__icon { font-size: 48px; opacity: 0.5; }
+.empty-state__text { font-size: 14px; }
+
+/* Group chat specific */
+.group-chat .msg__bubble {
+  max-width: 100%;
+}
+.group-chat .msg__avatar {
+  border-radius: var(--radius-sm);
+}
+.group-participants {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-left: 8px;
+}
+.group-participant {
+  width: 24px; height: 24px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  background: var(--bg-elevated);
+}
+</style>
+</head>
+<body>
+
+<div class="app-container">
+  <!-- Title Bar -->
+  <div class="title-bar">
+    <div class="title-bar__brand">
+      <div class="title-bar__brand-dot"></div>JuggleMate
+    </div>
+    <div class="title-bar__actions">
+      <div class="layout-toggle" id="layoutToggle">
+        <button class="active" data-layout="three" onclick="setLayout('three')">三栏</button>
+        <button data-layout="two" onclick="setLayout('two')">专注</button>
+      </div>
+      <button class="title-bar__btn title-bar__logout" onclick="handleLogout()" title="退出登录">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+          <polyline points="16 17 21 12 16 7"/>
+          <line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar__header">
+      <input type="text" class="sidebar__search" placeholder="搜索会话或联系人...">
+    </div>
+    <div class="sidebar__filters">
+      <button class="sidebar__filter active" onclick="filterConvos('all', this)">全部</button>
+      <button class="sidebar__filter" onclick="filterConvos('unread', this)">未读</button>
+      <button class="sidebar__filter" onclick="filterConvos('takeover', this)">接管中</button>
+    </div>
+    <div class="sidebar__convos" id="convoList">
+      <!-- Conversation items injected by JS -->
+    </div>
+    <div class="sidebar__groups">
+      <div class="sidebar__groups-label">Agent 群组</div>
+      <div id="groupList">
+        <!-- Group items injected by JS -->
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Chat -->
+  <main class="main-chat" id="mainChat">
+    <div class="chat-header" id="chatHeader">
+      <div class="chat-header__info">
+        <div class="convo-item__avatar" style="background:oklch(0.35 0.1 35);color:white;width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:600;">李</div>
+        <div>
+          <div class="chat-header__name">李美妆</div>
+          <div class="chat-header__platform">🎵 抖音 · 在线</div>
+        </div>
+      </div>
+      <div class="chat-header__actions">
+        <button class="btn btn-sm btn-outline" id="toggleTakeover" onclick="toggleTakeover()">🤖 接管</button>
+      </div>
+    </div>
+
+    <!-- Takeover Banner (hidden by default) -->
+    <div class="takeover-banner" id="takeoverBanner" style="display:none;">
+      <div class="takeover-banner__text">
+        <div class="takeover-banner__pulse"></div>
+        <span id="takeoverBannerText">客服助手 接管中</span>
+      </div>
+      <button class="btn btn-sm btn-danger-outline" onclick="toggleTakeover()">收回控制</button>
+    </div>
+
+    <div class="messages-area" id="messagesArea">
+      <!-- Messages injected by JS -->
+    </div>
+
+    <!-- Agent suggestion inline -->
+    <div class="agent-suggestions" id="agentSuggestions">
+      <div class="agent-suggestions__title">Agent 回复建议</div>
+      <div class="suggestion-cards" id="suggestionCards">
+        <!-- Suggestions injected by JS -->
+      </div>
+    </div>
+
+    <div class="chat-input-area">
+      <div class="chat-input-row">
+        <textarea class="chat-input" id="chatInput" placeholder="输入消息..." rows="1"></textarea>
+        <button class="send-btn" onclick="sendMessage()">↑</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- Agent Panel -->
+  <aside class="agent-panel" id="agentPanel">
+    <div class="agent-panel__header">
+      <div class="agent-panel__title">🤖 Agent</div>
+      <div class="agent-panel__header-actions">
+        <button class="btn btn-sm btn-outline" onclick="toggleAgentPanel()" title="收起面板">◀</button>
+      </div>
+    </div>
+    <div class="agent-panel__list" id="agentList">
+      <!-- Agent cards injected by JS -->
+    </div>
+    <div class="agent-panel__footer">
+      <button class="btn btn-outline" onclick="openCreateAgent()">+ 创建 Agent</button>
+      <button class="btn btn-outline" id="agentPanelTakeover" onclick="toggleTakeover()">🤖 接管</button>
+    </div>
+  </aside>
+</div>
+
+<!-- Create Agent Slideover -->
+<div class="overlay" id="createAgentOverlay" style="display:none;" onclick="closeCreateAgent()"></div>
+<div class="slideover" id="createAgentSlideover" style="display:none;">
+  <div class="slideover__header">
+    <div class="slideover__title">创建新 Agent</div>
+    <button class="slideover__close" onclick="closeCreateAgent()">✕</button>
+  </div>
+  <div class="slideover__body">
+    <div class="form-group">
+      <label class="form-label">Agent 名称</label>
+      <input class="form-input" placeholder="例如：客服助手、商务谈判官" id="agentName">
+    </div>
+    <div class="form-group">
+      <label class="form-label">角色描述</label>
+      <textarea class="form-textarea" placeholder="一句话描述 Agent 的身份和职责..." id="agentDesc"></textarea>
+      <div class="form-hint">例如：你是美妆品牌的小红书客服，语气亲切活泼，熟悉产品手册和促销信息</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">回复风格</label>
+      <select class="form-select" id="agentStyle">
+        <option>亲切活泼</option>
+        <option>专业正式</option>
+        <option>简洁直接</option>
+        <option>自定义 Prompt</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">知识库</label>
+      <div class="upload-zone" onclick="alert('模拟上传：支持 PDF/Word/TXT/链接')">
+        📎 拖拽文件至此或点击上传<br>
+        <span style="font-size:11px;">支持 PDF、Word、TXT、网页链接</span>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">适用平台</label>
+      <div class="platform-checkboxes">
+        <div class="platform-check checked" onclick="togglePlatformCheck(this)">🎵 抖音</div>
+        <div class="platform-check checked" onclick="togglePlatformCheck(this)">📕 小红书</div>
+        <div class="platform-check" onclick="togglePlatformCheck(this)">✈️ Telegram</div>
+      </div>
+    </div>
+    <div class="form-group">
+      <div class="toggle-row">
+        <div>
+          <div class="toggle-label">接管权限</div>
+          <div class="toggle-desc">允许此 Agent 自动接管会话回复</div>
+        </div>
+        <button class="toggle-switch on" onclick="this.classList.toggle('on')"></button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">温度参数: <span id="tempValue">0.7</span></label>
+      <div class="range-group">
+        <input type="range" class="range-slider" min="0" max="1" step="0.1" value="0.7" oninput="document.getElementById('tempValue').textContent=this.value">
+      </div>
+      <div class="form-hint">越高回复越有创造性，越低越保守确定</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">最大回复长度</label>
+      <input class="form-input" type="number" value="200" placeholder="字数上限">
+    </div>
+  </div>
+  <div class="slideover__footer">
+    <button class="btn btn-outline" onclick="closeCreateAgent()">取消</button>
+    <button class="btn btn-primary" onclick="createAgent()">创建 Agent</button>
+  </div>
+</div>
+
+<script>
+// ---- Data ----
+const conversations = [
+  {
+    id: 'c1',
+    name: '李美妆',
+    avatar: '李',
+    avatarBg: 'oklch(0.35 0.10 35)',
+    platform: 'douyin',
+    platformLabel: '🎵 抖音',
+    preview: '这个面膜敏感肌能用吗？',
+    unread: 2,
+    isTakeover: false,
+    messages: [
+      { type: 'incoming', text: '你好，我想问一下你们家那款补水面膜', sender: '李美妆' },
+      { type: 'outgoing', text: '您好！我们家有三款补水面膜，您方便说下您的肤质吗？我帮您推荐' },
+      { type: 'incoming', text: '我是敏感肌，脸颊容易泛红，之前用过好多牌子都踩雷了，一直没找到合适的面膜。你们家的这个面膜敏感肌能用吗？', sender: '李美妆' },
+    ]
+  },
+  {
+    id: 'c2',
+    name: '王设计',
+    avatar: '王',
+    avatarBg: 'oklch(0.35 0.10 10)',
+    platform: 'xhs',
+    platformLabel: '📕 小红书',
+    preview: '合作报价发一下',
+    unread: 0,
+    isTakeover: false,
+    messages: [
+      { type: 'incoming', text: '你好，看到你们品牌的小红书内容做得不错，我们是设计工作室，想聊聊联名合作', sender: '王设计' },
+      { type: 'outgoing', text: '感谢关注！方便说说具体合作方向吗？' },
+      { type: 'incoming', text: '我们想做一个护肤品×插画联名包装，想先了解下你们的合作报价', sender: '王设计' },
+    ]
+  },
+  {
+    id: 'c3',
+    name: 'Alex Chen',
+    avatar: 'A',
+    avatarBg: 'oklch(0.35 0.10 225)',
+    platform: 'tg',
+    platformLabel: '✈️ Telegram',
+    preview: 'Can you ship to Singapore?',
+    unread: 1,
+    isTakeover: false,
+    messages: [
+      { type: 'incoming', text: 'Hi! I found your store from a friend. Do you ship internationally?', sender: 'Alex' },
+      { type: 'outgoing', text: 'Yes, we ship to most countries including Singapore, Malaysia, Thailand, and the US.' },
+      { type: 'incoming', text: 'Great! Can you ship to Singapore? What are the shipping costs and delivery times?', sender: 'Alex' },
+    ]
+  },
+  {
+    id: 'c4',
+    name: '张老板',
+    avatar: '张',
+    avatarBg: 'oklch(0.35 0.08 100)',
+    platform: 'douyin',
+    platformLabel: '🎵 抖音',
+    preview: '50件能给什么价',
+    unread: 0,
+    isTakeover: true,
+    messages: [
+      { type: 'incoming', text: '我看你们家那款精华不错，批发50件能给什么价？', sender: '张老板' },
+      { type: 'agent', text: '张老板您好！50件批发可以享受7折优惠，单价从199降到139，总价6950。另外首次合作还赠送5件试用装。需要帮您下单吗？', agentName: '客服助手' },
+      { type: 'incoming', text: '能不能再优惠点？我长期拿货', sender: '张老板' },
+    ]
+  },
+  {
+    id: 'c5',
+    name: '美妆达人大可',
+    avatar: '可',
+    avatarBg: 'oklch(0.35 0.12 350)',
+    platform: 'xhs',
+    platformLabel: '📕 小红书',
+    preview: 'PR包裹收到了',
+    unread: 3,
+    isTakeover: false,
+    messages: [
+      { type: 'incoming', text: '哈喽，PR包裹收到了，产品质感很不错！', sender: '美妆达人大可' },
+      { type: 'outgoing', text: '太好了，期待您的测评～有什么需要补充的信息随时找我' },
+      { type: 'incoming', text: '好的，我打算本周出视频，你们有没有特别想强调的卖点或者禁用词需要注意的？', sender: '美妆达人大可' },
+    ]
+  }
+];
+
+const agents = [
+  {
+    id: 'a1',
+    name: '客服助手',
+    role: '售前咨询',
+    emoji: '💁',
+    suggestions: [
+      '亲您好！这款面膜专为敏感肌设计，含有神经酰胺和积雪草提取物，温和不刺激，很多敏感肌顾客反馈都很好～',
+      '建议您先试用我们的7天体验装，29.9元包邮，觉得合适再买正装哦！',
+      '敏感肌完全可以用！通过了皮肤科测试，0酒精0香精，还有30天无忧退换～'
+    ]
+  },
+  {
+    id: 'a2',
+    name: '商务助手',
+    role: '合作洽谈',
+    emoji: '💼',
+    suggestions: [
+      '感谢您的合作意向。我们目前的标准合作方案如下：图文笔记报价3000-5000/篇，视频测评8000-12000/条，具体根据粉丝量级和内容形式协商。',
+      '联名合作我们可以提供：包装设计支持、品牌素材授权、联合推广资源。方便的话我们约个电话详聊？',
+      '合作报价已发送至您的邮箱。我们也可以根据您的需求定制方案，期待进一步沟通。'
+    ]
+  },
+  {
+    id: 'a3',
+    name: '英语助手',
+    role: '海外客服',
+    emoji: '🌍',
+    suggestions: [
+      'Yes, we ship to Singapore! Standard shipping takes 7-10 business days and costs $12. Express delivery is $25 (3-5 days). Orders over $100 get free standard shipping.',
+      'Absolutely! We ship to Singapore with tracking. Delivery is typically 5-10 working days, and free shipping applies for orders above $100 USD.'
+    ]
+  }
+];
+
+const groups = [
+  {
+    id: 'g1',
+    name: '营销策划组',
+    agentCount: 3,
+    messages: [
+      { type: 'user', text: '帮我策划下个月双11的小红书营销方案，预算2万以内，主推我们家的精华液' },
+      { type: 'agent', agentName: '营销专家', agentEmoji: '🎯', text: '好的！2万预算做精华液小红书推广，我建议分三步：\n\n**1. 预热期(11.1-11.7) 预算8000**\n· 邀请5位腰部达人产出种草笔记\n· 素人铺量20篇真实测评\n· 话题标签：#秋冬精华推荐 #双11必买清单\n\n**2. 爆发期(11.8-11.11) 预算10000**\n· 信息流精准投放，定向25-35岁女性\n· 头部达人1篇视频测评（预算占大头）\n· 限时优惠券+评论区互动引导\n\n**3. 返场期(11.12-11.15) 预算2000**\n· 用户好评二次传播\n· 未转化用户私信触达' },
+      { type: 'agent', agentName: '财务助手', agentEmoji: '💰', text: '预算分配基本合理，补充几点：\n\n· 信息流投放按CPM 50预估，10000预算约20万曝光\n· 建议聚焦一二线城市女性25-35岁\n· 预留5%机动预算（约1000元）应对突发需求\n· ROI预期：按行业平均3%-5%转化率，预计产出300-500单\n\n风险提示：达人排期要提前锁定，双11期间优质达人资源紧张。' },
+      { type: 'agent', agentName: '内容助手', agentEmoji: '✍️', text: '我来补充内容策略方向：\n\n**笔记标题方向：**\n· "终于找到本命精华！干敏皮双11必囤"\n· "30天精华实测，这效果我服了"\n\n**内容关键卖点：**\n· 成分党友好（列出核心成分+功效数据）\n· 使用前后对比（真实记录）\n· 性价比对比（横向对比大牌平替）\n\n**避坑提醒：**\n· 禁用"最""第一"等绝对化用语\n· 达人需真实使用7天以上再出内容\n· 素人笔记保持自然语气，避免过度营销感' },
+    ]
+  },
+  {
+    id: 'g2',
+    name: '技术方案评审组',
+    agentCount: 2,
+    messages: [
+      { type: 'user', text: '我们想做一个会员积分系统，请帮我评审下技术方案：用Redis做积分存储，MySQL做订单记录，前端实时展示积分变动' },
+      { type: 'agent', agentName: '架构师', agentEmoji: '🏗️', text: '方案方向正确，但有几个优化建议：\n\n1. Redis做积分存储很好，但需要配合AOF持久化防止数据丢失\n2. 建议增加一层积分变动的消息队列（Kafka/RabbitMQ），解耦订单系统和积分系统\n3. 实时展示可以用WebSocket推送，不要轮询\n4. 考虑积分过期机制，用Redis的TTL或者定时任务扫描' },
+      { type: 'agent', agentName: '安全专家', agentEmoji: '🔒', text: '安全方面需要关注：\n\n· Redis一定要设置密码且不暴露公网\n· 积分变动操作需要幂等设计（防止重复扣减/增加）\n· 增加风控规则：单用户单日积分上限、异常行为检测\n· 所有积分变动操作记录审计日志\n· 前端展示要做数据签名校验，防止篡改' },
+    ]
+  }
+];
+
+// ---- State ----
+let currentView = 'conversation'; // 'conversation' | 'group'
+let currentConvoId = 'c1';
+let currentGroupId = null;
+let isTakeover = false;
+let layoutMode = 'three';
+
+// ---- Init ----
+function init() {
+  renderConvoList();
+  renderAgentList();
+  renderGroupList();
+  showConversation('c1');
+}
+
+function renderConvoList() {
+  const container = document.getElementById('convoList');
+  container.innerHTML = conversations.map(c => `
+    <div class="convo-item ${c.id === currentConvoId ? 'active' : ''}" onclick="showConversation('${c.id}')" id="convo-${c.id}">
+      <div class="convo-item__avatar" style="background:${c.avatarBg};color:white;">
+        ${c.avatar}
+        <div class="platform-dot ${c.platform}"></div>
+      </div>
+      <div class="convo-item__info">
+        <div class="convo-item__name">${c.name}</div>
+        <div class="convo-item__preview">${c.preview}</div>
+      </div>
+      ${c.unread > 0 ? `<div class="convo-item__badge">${c.unread}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+function renderGroupList() {
+  const container = document.getElementById('groupList');
+  container.innerHTML = groups.map(g => `
+    <div class="group-item ${g.id === currentGroupId ? 'active' : ''}" onclick="showGroup('${g.id}')" id="group-${g.id}">
+      <div class="group-item__icon">👥</div>
+      <div>
+        <div style="font-weight:500;">${g.name}</div>
+        <div style="font-size:11px;color:var(--text-tertiary);">${g.agentCount} 个 Agent</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderAgentList() {
+  const container = document.getElementById('agentList');
+  container.innerHTML = agents.map(a => `
+    <div class="agent-card">
+      <div class="agent-card__header">
+        <div class="agent-card__avatar">${a.emoji}</div>
+        <div>
+          <div class="agent-card__name">${a.name}</div>
+          <div class="agent-card__role">${a.role}</div>
+        </div>
+      </div>
+      ${a.suggestions.map((s, i) => `
+        <div class="agent-card__suggestion" onclick="useSuggestion('${a.id}', ${i})" title="点击使用此建议">
+          ${s.length > 80 ? s.slice(0, 80) + '...' : s}
+        </div>
+      `).join('')}
+    </div>
+  `).join('');
+}
+
+// ---- Conversation View ----
+function showConversation(id) {
+  currentView = 'conversation';
+  currentConvoId = id;
+  currentGroupId = null;
+  const convo = conversations.find(c => c.id === id);
+  if (!convo) return;
+
+  // Update active states
+  document.querySelectorAll('.convo-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.group-item').forEach(el => el.classList.remove('active'));
+  const convoEl = document.getElementById('convo-' + id);
+  if (convoEl) convoEl.classList.add('active');
+
+  // Update chat header
+  document.getElementById('chatHeader').innerHTML = `
+    <div class="chat-header__info">
+      <div class="convo-item__avatar" style="background:${convo.avatarBg};color:white;width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:600;">${convo.avatar}</div>
+      <div>
+        <div class="chat-header__name">${convo.name}</div>
+        <div class="chat-header__platform">${convo.platformLabel} · 在线</div>
+      </div>
+    </div>
+    <div class="chat-header__actions">
+      <button class="btn btn-sm btn-outline" id="toggleTakeover" onclick="toggleTakeover()">🤖 ${isTakeover ? '收回' : '接管'}</button>
+    </div>
+  `;
+
+  // Reset takeover
+  isTakeover = false;
+  document.getElementById('takeoverBanner').style.display = 'none';
+
+  // Render messages
+  renderMessages(convo.messages);
+
+  // Reset input
+  document.getElementById('chatInput').value = '';
+  document.getElementById('agentSuggestions').style.display = 'block';
+  document.getElementById('mainChat').classList.remove('group-chat');
+}
+
+function renderMessages(messages) {
+  const area = document.getElementById('messagesArea');
+  area.innerHTML = messages.map(m => {
+    if (m.type === 'incoming') {
+      return `
+        <div class="msg msg--incoming">
+          <div class="msg__avatar" style="background:var(--bg-elevated);display:flex;align-items:center;justify-content:center;">👤</div>
+          <div>
+            <div class="msg__bubble">${m.text}</div>
+            <div class="msg__time">刚刚</div>
+          </div>
+        </div>`;
+    } else if (m.type === 'outgoing') {
+      return `
+        <div class="msg msg--outgoing">
+          <div class="msg__bubble">${m.text}</div>
+          <div class="msg__time" style="text-align:right;">刚刚</div>
+        </div>`;
+    } else if (m.type === 'agent') {
+      return `
+        <div class="msg msg--agent">
+          <div class="msg__avatar" style="background:var(--accent-bg);display:flex;align-items:center;justify-content:center;">🤖</div>
+          <div>
+            <div class="msg__bubble">
+              <div class="msg__agent-label">🤖 ${m.agentName} · 自动回复</div>
+              ${m.text.replace(/\n/g, '<br>')}
+            </div>
+            <div class="msg__time">刚刚</div>
+          </div>
+        </div>`;
+    }
+  }).join('');
+  area.scrollTop = area.scrollHeight;
+}
+
+// ---- Group View ----
+function showGroup(id) {
+  currentView = 'group';
+  currentGroupId = id;
+  currentConvoId = null;
+  const group = groups.find(g => g.id === id);
+  if (!group) return;
+
+  document.querySelectorAll('.convo-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.group-item').forEach(el => el.classList.remove('active'));
+  const groupEl = document.getElementById('group-' + id);
+  if (groupEl) groupEl.classList.add('active');
+
+  document.getElementById('chatHeader').innerHTML = `
+    <div class="chat-header__info">
+      <div class="group-item__icon" style="width:36px;height:36px;font-size:18px;">👥</div>
+      <div>
+        <div class="chat-header__name">${group.name}</div>
+        <div class="chat-header__platform">${group.agentCount} 个 Agent 协作中</div>
+      </div>
+    </div>
+    <div class="chat-header__actions"></div>
+  `;
+
+  isTakeover = false;
+  document.getElementById('takeoverBanner').style.display = 'none';
+  document.getElementById('agentSuggestions').style.display = 'none';
+  document.getElementById('mainChat').classList.add('group-chat');
+
+  // Render group messages
+  const area = document.getElementById('messagesArea');
+  area.innerHTML = group.messages.map(m => {
+    if (m.type === 'user') {
+      return `
+        <div class="msg msg--outgoing" style="max-width:85%;">
+          <div class="msg__bubble">${m.text}</div>
+          <div class="msg__time" style="text-align:right;">你 · 刚刚</div>
+        </div>`;
+    } else {
+      return `
+        <div class="msg msg--incoming" style="max-width:90%;">
+          <div class="msg__avatar" style="background:var(--accent-bg);display:flex;align-items:center;justify-content:center;font-size:18px;">${m.agentEmoji}</div>
+          <div>
+            <div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:4px;">${m.agentName}</div>
+            <div class="msg__bubble" style="background:var(--bg-elevated);border:1px solid var(--border-subtle);">${m.text.replace(/\n/g, '<br>')}</div>
+            <div class="msg__time">刚刚</div>
+          </div>
+        </div>`;
+    }
+  }).join('');
+  area.scrollTop = area.scrollHeight;
+  document.getElementById('chatInput').value = '';
+}
+
+// ---- Takeover ----
+function toggleTakeover() {
+  isTakeover = !isTakeover;
+  const banner = document.getElementById('takeoverBanner');
+  const btn = document.getElementById('toggleTakeover');
+  const agentBtn = document.getElementById('agentPanelTakeover');
+
+  if (isTakeover) {
+    banner.style.display = 'flex';
+    document.getElementById('takeoverBannerText').textContent = '客服助手 接管中';
+    if (btn) btn.innerHTML = '🤖 收回';
+    if (btn) btn.className = 'btn btn-sm btn-danger-outline';
+    if (agentBtn) agentBtn.textContent = '🤖 接管中...';
+
+    // Simulate agent auto-reply after 2s
+    setTimeout(() => {
+      if (currentView === 'conversation' && isTakeover) {
+        const convo = conversations.find(c => c.id === currentConvoId);
+        if (convo && convo.messages.length > 0) {
+          const lastMsg = convo.messages[convo.messages.length - 1];
+          if (lastMsg.type === 'incoming') {
+            convo.messages.push({
+              type: 'agent',
+              text: '感谢您的咨询！我是客服助手，正在为您自动处理。关于您的问题，我们提供30天无忧退换服务，所有产品都通过了皮肤科安全测试。您可以放心选购～',
+              agentName: '客服助手'
+            });
+            renderMessages(convo.messages);
+          }
+        }
+      }
+    }, 2000);
+  } else {
+    banner.style.display = 'none';
+    if (btn) btn.innerHTML = '🤖 接管';
+    if (btn) btn.className = 'btn btn-sm btn-outline';
+    if (agentBtn) agentBtn.textContent = '🤖 接管';
+  }
+}
+
+// ---- Suggestions ----
+function useSuggestion(agentId, idx) {
+  const agent = agents.find(a => a.id === agentId);
+  if (agent && agent.suggestions[idx]) {
+    document.getElementById('chatInput').value = agent.suggestions[idx];
+    document.getElementById('chatInput').focus();
+  }
+}
+
+// ---- Send Message ----
+function sendMessage() {
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text) return;
+
+  if (currentView === 'conversation') {
+    const convo = conversations.find(c => c.id === currentConvoId);
+    if (convo) {
+      convo.messages.push({ type: 'outgoing', text });
+      renderMessages(convo.messages);
+    }
+  } else if (currentView === 'group') {
+    const group = groups.find(g => g.id === currentGroupId);
+    if (group) {
+      group.messages.push({ type: 'user', text });
+      showGroup(currentGroupId);
+    }
+  }
+
+  input.value = '';
+}
+
+// ---- Layout ----
+function setLayout(mode) {
+  layoutMode = mode;
+  const sidebar = document.getElementById('sidebar');
+  const agentPanel = document.getElementById('agentPanel');
+  const toggles = document.querySelectorAll('#layoutToggle button');
+
+  toggles.forEach(b => b.classList.remove('active'));
+  document.querySelector(`#layoutToggle button[data-layout="${mode}"]`).classList.add('active');
+
+  if (mode === 'three') {
+    sidebar.classList.remove('collapsed');
+    agentPanel.classList.remove('collapsed');
+  } else if (mode === 'two') {
+    sidebar.classList.remove('collapsed');
+    agentPanel.classList.add('collapsed');
+  }
+}
+
+function toggleAgentPanel() {
+  const panel = document.getElementById('agentPanel');
+  panel.classList.toggle('collapsed');
+}
+
+// ---- Filters ----
+function filterConvos(filter, btn) {
+  document.querySelectorAll('.sidebar__filter').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+
+  const items = document.querySelectorAll('#convoList .convo-item');
+  items.forEach(item => {
+    const convoId = item.id.replace('convo-', '');
+    const convo = conversations.find(c => c.id === convoId);
+    if (!convo) return;
+    if (filter === 'all') { item.style.display = ''; }
+    else if (filter === 'unread') { item.style.display = convo.unread > 0 ? '' : 'none'; }
+    else if (filter === 'takeover') { item.style.display = convo.isTakeover ? '' : 'none'; }
+  });
+}
+
+// ---- Create Agent ----
+function openCreateAgent() {
+  document.getElementById('createAgentOverlay').style.display = 'block';
+  document.getElementById('createAgentSlideover').style.display = 'flex';
+}
+
+function closeCreateAgent() {
+  document.getElementById('createAgentOverlay').style.display = 'none';
+  document.getElementById('createAgentSlideover').style.display = 'none';
+}
+
+function createAgent() {
+  const name = document.getElementById('agentName').value || '新 Agent';
+  const desc = document.getElementById('agentDesc').value || '通用助手';
+  const style = document.getElementById('agentStyle').value;
+
+  agents.push({
+    id: 'a' + (agents.length + 1),
+    name: name,
+    role: style,
+    emoji: ['🧠', '🎯', '✨', '⚡', '🔮'][agents.length % 5],
+    suggestions: [
+      '这是我的第一条建议回复，基于角色设定自动生成。',
+      '第二条候选回复方案，你可以点击直接使用。',
+      '第三条智能建议，覆盖不同的回复角度和语气。'
+    ]
+  });
+
+  renderAgentList();
+  closeCreateAgent();
+
+  // Flash new agent
+  setTimeout(() => {
+    const cards = document.querySelectorAll('.agent-card');
+    if (cards.length > 0) {
+      cards[cards.length - 1].style.boxShadow = '0 0 0 2px var(--accent-dim)';
+      setTimeout(() => { cards[cards.length - 1].style.boxShadow = ''; }, 1500);
+    }
+  }, 300);
+}
+
+function togglePlatformCheck(el) {
+  el.classList.toggle('checked');
+}
+
+function handleLogout() {
+  if (confirm('确定要退出登录吗？')) {
+    alert('退出登录演示，实际项目中将清除 Token 并跳转登录页');
+    // 实际项目中：localStorage.clear(); location.href = '/login.html';
+  }
+}
+
+// ---- Keyboard shortcuts ----
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey && document.activeElement === document.getElementById('chatInput')) {
+    e.preventDefault();
+    sendMessage();
+  }
+  if (e.ctrlKey && e.key === '1') {
+    e.preventDefault();
+    const cards = document.querySelectorAll('.suggestion-card');
+    if (cards.length >= 1) cards[0].click();
+  }
+  if (e.ctrlKey && e.key === '2') {
+    e.preventDefault();
+    const cards = document.querySelectorAll('.suggestion-card');
+    if (cards.length >= 2) cards[1].click();
+  }
+});
+
+// ---- Init ----
+init();
+</script>
+</body>
+</html>
