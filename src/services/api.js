@@ -16,6 +16,10 @@ const SERVER_PATH = {
   AGENT_SESSION_TAKEOVER: (sessionId) => buildUrl(`/jmate/aibots/sessions/${sessionId}/takeover`),
   AGENT_SESSION_CHAT: (sessionId) => buildUrl(`/jmate/aibots/sessions/${sessionId}/chat`),
   AGENT_SESSION_FEEDBACK: (sessionId) => buildUrl(`/jmate/aibots/sessions/${sessionId}/feedback`),
+
+  // Ticket APIs
+  TICKET_LIST: buildUrl('/jmate/tickets/list'),
+  TICKET_CLAIM: (ticketId) => buildUrl(`/jmate/tickets/${ticketId}/claim`),
 }
 
 async function get(url, params = {}) {

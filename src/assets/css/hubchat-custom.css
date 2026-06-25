@@ -9,6 +9,17 @@
   width: 100vw;
 }
 
+/* Titlebar drag region for macOS hidden titlebar */
+.titlebar-drag {
+  position: fixed;
+  top: 0;
+  left: 80px;
+  right: 0;
+  height: 38px;
+  z-index: 200;
+  -webkit-app-region: drag;
+}
+
 /* Layout Toggle */
 .layout-toggle {
   display: flex;
@@ -1578,7 +1589,7 @@
 .tyn-chat-main {
   flex: 1;
   height: calc(100vh - 20px);
-  margin: 10px 0;
+  margin: 10px 10px 10px 0;
   display: flex;
   flex-direction: column;
   background: #FFFFFF;

@@ -67,6 +67,11 @@ const props = defineProps({
     type: Array,
     default: () => []
   },
+  // Ticket object (when conversation.isTicket === true)
+  ticket: {
+    type: Object,
+    default: null
+  },
   // The currently *selected* Agent on the right-side panel. Drives the
   // header status tip ("{name} 正在协助回复" / "人工自主回复"). This is the
   // operator's "I'm writing in this Agent's voice" signal — distinct from
@@ -94,7 +99,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['send', 'useSuggestion', 'revokeTakeover', 'clearSuggestion'])
+const emit = defineEmits(['send', 'useSuggestion', 'revokeTakeover', 'clearSuggestion', 'claimTicket'])
 
 const { Event, SentState, MessageType, ConversationType } = im
 
@@ -110,6 +115,10 @@ const replyTo = ref(null)
 const peerTyping = ref(false)
 let receiveTypingTimer = null
 let typingStartSentAt = 0
+
+// Ticket claim banner
+const showClaimBanner = ref(false)
+const claiming = ref(false)
 
 // Thinking bubble state — shown after sendText until agent replies or timeout
 const thinkingMsg = ref(null)
@@ -208,12 +217,25 @@ const takeoverTipText = computed(() => {
   return '人工自主回复'
 })
 const isTipActive = computed(() => !!props.selectedAgent)
+
+const isTicket = computed(() => props.conversation?.isTicket === true)
+const isTicketUnassigned = computed(() => isTicket.value && props.ticket?.status === 0)
 function onRevokeTakeover() {
   // Banner's "收回控制" button — the source of truth for the current
   // conversation's 托管 lives in MainView's takeoverByConv map, so we
   // emit and let the parent drop the entry (which also calls the IM
   // tag-remove SDK call to keep the server in sync).
   emit('revokeTakeover')
+}
+
+// --- Ticket claim ---
+function onClaimTicket() {
+  claiming.value = true
+  emit('claimTicket', props.ticket?.ticket_id)
+  // Reset states after emission; the parent will handle the API call
+  // and refresh the ticket status accordingly
+  claiming.value = false
+  showClaimBanner.value = false
 }
 
 // ---------------------------------------------------------------------------
@@ -233,6 +255,7 @@ async function loadHistory() {
       time: oldest ? oldest.sentTime : 0
     }
     const result = await juggle.getMessages(params)
+    console.log('[ChatMain] loadHistory', params, result)
     const incoming = result?.messages || []
     const isFinished = !!result?.isFinished
     for (const m of incoming) {
@@ -405,6 +428,14 @@ async function sendText(text) {
 }
 
 async function onSend(text) {
+  // 未认领的工单不允许直接发消息 — 必须先认领。
+  // 既挡住发送按钮，也挡住回车键（MessageSender 在 submit 之前会 emit send）。
+  if (isTicketUnassigned.value) {
+    if (!text || !text.trim()) {
+      showClaimBanner.value = true
+    }
+    return
+  }
   sendEndTyping()
   // If the user is editing a suggestion, submit "edited" feedback before sending
   const sug = editingSuggestion.value
@@ -454,14 +485,25 @@ function sendEndTyping() {
 function onComposerInput(value) {
   composerText.value = value
   if (value.trim()) {
-    sendStartTyping()
+    // Don't send typing for unassigned tickets
+    if (!isTicketUnassigned.value) {
+      sendStartTyping()
+    }
+    if (isTicketUnassigned.value) {
+      showClaimBanner.value = true
+    }
   } else {
-    sendEndTyping()
+    if (!isTicketUnassigned.value) {
+      sendEndTyping()
+    }
+    showClaimBanner.value = false
   }
 }
 
 function onComposerFocus() {
-  sendStartTyping(true)
+  if (!isTicketUnassigned.value) {
+    sendStartTyping(true)
+  }
 }
 
 function onResend(message) {
@@ -1250,7 +1292,7 @@ function onCancelReply() {
           </div>
         </div>
       </div>
-      <div class="tyn-chat-header__actions" v-if="!isGroup">
+      <div class="tyn-chat-header__actions" v-if="!isGroup && !isTicket">
         <div
           class="tyn-chat-header__takeover-tip"
           :class="{ 'is-active': isTipActive }"
@@ -1259,6 +1301,15 @@ function onCancelReply() {
           <span class="tyn-chat-header__takeover-dot" aria-hidden="true"></span>
           <span class="tyn-chat-header__takeover-text">{{ takeoverTipText }}</span>
         </div>
+      </div>
+      <div class="tyn-chat-header__actions" v-if="isTicketUnassigned">
+        <button
+          class="tyn-btn tyn-btn--sm tyn-btn--primary"
+          @click="onClaimTicket"
+          :disabled="claiming"
+        >
+          {{ claiming ? '分配中...' : '分配给我' }}
+        </button>
       </div>
     </div>
 
@@ -1271,6 +1322,41 @@ function onCancelReply() {
       <button class="tyn-btn tyn-btn--sm tyn-btn--danger-outline" @click="onRevokeTakeover">
         收回控制
       </button>
+    </div>
+
+    <!-- Ticket Header (when isTicket === true) -->
+    <!-- <div v-if="isTicket && ticket" class="tyn-ticket-header">
+      <div class="tyn-ticket-header__info">
+        <div class="tyn-ticket-header__title">{{ ticket.title || '工单' }}</div>
+        <div class="tyn-ticket-header__meta">
+          <span class="tyn-ticket-header__status" :class="`status-${ticket.status}`">
+            {{ ticket.status === 0 ? '未分配' : ticket.status === 1 ? '处理中' : '已关闭' }}
+          </span>
+          <span class="tyn-ticket-header__id">#{{ ticket.ticket_id }}</span>
+        </div>
+      </div>
+    </div> -->
+
+    <!-- Ticket Claim Banner (unassigned ticket, user starts typing) -->
+    <div v-if="showClaimBanner" class="tyn-claim-banner animate-slideDown">
+      <!-- <div class="tyn-claim-banner__handle" aria-hidden="true"></div> -->
+      <div class="tyn-claim-banner__row">
+        <div class="tyn-claim-banner__text">
+          此对话未分配给您。您想要将此对话分配给自己吗？
+          <span
+            class="tyn-claim-banner__action"
+            :class="{ 'is-busy': claiming }"
+            role="button"
+            tabindex="0"
+            @click="onClaimTicket"
+            @keydown.enter.prevent="onClaimTicket"
+            @keydown.space.prevent="onClaimTicket"
+          >
+            <span class="tyn-claim-banner__arrow" aria-hidden="true">→</span>
+            <span>{{ claiming ? '分配中...' : '分配给我' }}</span>
+          </span>
+        </div>
+      </div>
     </div>
 
     <!-- Pending Agent Suggestions -->
@@ -1383,6 +1469,7 @@ function onCancelReply() {
     <MessageSender
       :model-value="composerText"
       :placeholder="conversation ? `发送消息给 ${conversation.name || ''}` : '输入消息...'"
+      :send-disabled="isTicketUnassigned"
       @update:model-value="onComposerInput"
       @focus="onComposerFocus"
       @blur="sendEndTyping"
@@ -1390,6 +1477,7 @@ function onCancelReply() {
       @attach="onAttach"
     />
 
+    <!-- Ticket Detail Drawer -->
     <!-- Image lightbox -->
     <ImagePreviewer :show="previewerOpen" :url="previewerUrl" @close="closePreviewer" />
 
@@ -1442,6 +1530,158 @@ function onCancelReply() {
   font-size: 11px;
   color: var(--text-tertiary);
   padding: 8px 0;
+}
+
+/* Ticket Header */
+.tyn-ticket-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--bg-secondary, #f5f5f5);
+  border-bottom: 1px solid var(--border-primary, #e0e0e0);
+}
+
+.tyn-ticket-header__info {
+  flex: 1;
+}
+
+.tyn-ticket-header__title {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text-primary, #333);
+  margin-bottom: 2px;
+}
+
+.tyn-ticket-header__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-tertiary, #999);
+}
+
+.tyn-ticket-header__status {
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.tyn-ticket-header__status.status-0 {
+  background: var(--surface-danger, #fef2f2);
+  color: var(--text-danger, #dc2626);
+}
+
+.tyn-ticket-header__status.status-1 {
+  background: var(--surface-warning, #fffbeb);
+  color: var(--text-warning, #d97706);
+}
+
+.tyn-ticket-header__status.status-2 {
+  background: var(--surface-success, #f0fdf4);
+  color: var(--text-success, #16a34a);
+}
+
+.tyn-ticket-header__id {
+  font-family: monospace;
+}
+
+/* Ticket Claim Banner */
+.tyn-claim-banner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 16px 12px;
+  background: linear-gradient(180deg, #f5f8ff 0%, #eaf1fc 100%);
+  border-bottom: 1px solid var(--border-info, #c7dcfb);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+/* 顶部小 handle（类底部抽屉的视觉提示） */
+.tyn-claim-banner__handle {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(74, 144, 226, 0.25);
+  margin: 2px auto 8px;
+}
+
+.tyn-claim-banner__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tyn-claim-banner__text {
+  font-size: 13px;
+  color: #334155;
+  line-height: 1.5;
+  flex: 1;
+}
+
+/* 「分配给我」—— 用 div 表现成可点击的浅蓝色文字链接 */
+.tyn-claim-banner__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #4A90E2;
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.tyn-claim-banner__action:hover {
+  color: #2E6FBF;
+  background: rgba(74, 144, 226, 0.08);
+}
+
+.tyn-claim-banner__action:active {
+  color: #1F5BA0;
+  background: rgba(74, 144, 226, 0.14);
+}
+
+.tyn-claim-banner__action:focus-visible {
+  outline: 2px solid rgba(74, 144, 226, 0.4);
+  outline-offset: 1px;
+}
+
+.tyn-claim-banner__action.is-busy {
+  color: #94a3b8;
+  cursor: progress;
+  pointer-events: none;
+}
+
+.tyn-claim-banner__arrow {
+  font-size: 14px;
+  line-height: 1;
+  transition: transform 0.2s ease;
+}
+
+.tyn-claim-banner__action:hover .tyn-claim-banner__arrow {
+  transform: translateX(2px);
+}
+
+/* Animation for slide down */
+.animate-slideDown {
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Thinking bubble */

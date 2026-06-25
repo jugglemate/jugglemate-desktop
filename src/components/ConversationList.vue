@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import im from '../common/im'
 import { MSG_NAME, TYPING_STATUS } from '../common/enum'
 import ConversationMenu from './ConversationMenu.vue'
@@ -12,7 +12,7 @@ const props = defineProps({
   },
   filter: {
     type: String,
-    default: 'all' // all, unread, takeover
+    default: 'all' // all, unassigned, takeover
   }
 })
 
@@ -58,9 +58,19 @@ function formatTime(timestamp) {
 function shortFormat(message) {
   if (!message) return ''
   if (typeof message === 'string') return message
-  const { content } = message
+  const { name, content } = message
   if (!content) return ''
-  if (typeof content === 'string') return content
+
+  // 自定义消息：jgm:ticketassign — 工单分配 / 认领
+  if (name === MSG_NAME.TICKET_ASSIGN) {
+    return formatTicketAssignPreview(content)
+  }
+
+  if (typeof content === 'string') {
+    // 字符串型 content：自定义消息已经在上面的 name 判断里被消化掉了，
+    // 走到这里只剩纯文本 / 已被 SDK 序列化的文本消息，原样展示即可。
+    return content
+  }
   if (content.content !== undefined && content.content !== null) return String(content.content)
   if (content.text) return content.text
   if (content.type === 'image' || content.image) return '[图片]'
@@ -70,6 +80,34 @@ function shortFormat(message) {
   if (content.type === 'location' || content.location) return '[位置]'
   if (content.type === 'card' || content.card) return '[名片]'
   return '[消息]'
+}
+
+// 与 im.js 里同名函数保持一致，渲染 jgm:ticketassign 消息的预览文本。
+// assign_type: 0 = 自助认领, 1 = 分配给他人。
+function formatTicketAssignPreview(rawContent) {
+  const payload = parseTicketAssignContent(rawContent)
+  if (!payload) return '[工单分配]'
+  const op = payload.operator?.nickname || ''
+  const ae = payload.assignee?.nickname || ''
+  if (payload.assign_type === 0) {
+    return ae ? `${ae} 认领了工单` : '已认领工单'
+  }
+  if (op && ae) return `由 ${op} 分配给 ${ae}`
+  if (ae) return `已分配给 ${ae}`
+  return '[工单分配]'
+}
+
+function parseTicketAssignContent(rawContent) {
+  if (!rawContent) return null
+  if (typeof rawContent === 'object') return rawContent
+  if (typeof rawContent === 'string') {
+    try {
+      return JSON.parse(rawContent)
+    } catch {
+      return null
+    }
+  }
+  return null
 }
 
 function getConversationId(conversation) {
@@ -362,11 +400,12 @@ function onStateChanged({ state }) {
 }
 
 onMounted(() => {
+  // juggle 由 main.js 入口的 im.init() 保证已经初始化好（im.init() 是幂等的）。
+  // 如果还取不到 juggle，说明启动路径有问题，直接 warn 返回避免下游炸。
   if (!juggle?.on) {
-    console.warn('[ConversationList] onMounted — juggle.on not available, IM not initialized')
+    console.warn('[ConversationList] juggle not initialized — im.init() was not called before component mount?')
     return
   }
-
   console.log('[ConversationList] onMounted — juggle.isConnected():', juggle.isConnected?.())
 
   // Fetch initial data if already connected; otherwise wait for the event.
@@ -401,9 +440,8 @@ onBeforeUnmount(() => {
 // client-side, no need to re-fetch.
 
 const filters = [
-  { key: 'all', label: '全部会话' },
-  { key: 'unread', label: '未读会话' },
-  { key: 'takeover', label: '接管中' }
+  { key: 'all', label: '我的' },
+  { key: 'unassigned', label: '未分配' }
 ]
 
 // Right-click state for the conversation list menu.
@@ -460,7 +498,7 @@ const displayConversations = computed(() => {
 
 function isVisible(convo) {
   if (props.filter === 'all') return true
-  if (props.filter === 'unread') return hasUnread(convo)
+  if (props.filter === 'unassigned') return false // ticket list handled by TicketList component
   if (props.filter === 'takeover') {
     // Read through the reactive tag set in im.js rather than the cached
     // `isTakeover` field on the row. The cached field is set at mapping
@@ -482,22 +520,18 @@ const topConversations = computed(() => {
   return []
 })
 
-function handleSelect(convo) {
-  void clearUnreadCount(convo)
-  emit('select', convo)
-}
-
 function handleFilter(key) {
-  // When the operator opens the "接管中" filter, refresh the tag list from
-  // the server. The result itself isn't surfaced in this component — the
-  // takeover tag's existence is implied by im.TAKEOVER_TAG_ID — but the
-  // round-trip keeps the local state aligned with the SDK if anything has
-  // changed under us (e.g. another operator on a different device).
   if (key === 'takeover') {
     void im.fetchConversationTags()
   }
   emit('filterChange', key)
 }
+
+function handleSelect(convo) {
+  void clearUnreadCount(convo)
+  emit('select', convo)
+}
+
 </script>
 
 <template>
@@ -600,7 +634,7 @@ function handleFilter(key) {
 
       <div v-if="visibleConversations.length === 0" class="tyn-sidebar__empty">
         <template v-if="!imReady">正在加载会话…</template>
-        <template v-else-if="filter === 'unread'">没有未读会话</template>
+        <template v-else-if="filter === 'unassigned'">没有待分配工单</template>
         <template v-else-if="filter === 'takeover'">没有正在接管的会话</template>
         <template v-else>暂无会话</template>
       </div>

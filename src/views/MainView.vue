@@ -3,6 +3,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import NavSidebar from '../components/NavSidebar.vue'
 import ConversationList from '../components/ConversationList.vue'
+import TicketList from '../components/TicketList.vue'
 import ChatMain from '../components/ChatMain.vue'
 import AgentPanel from '../components/AgentPanel.vue'
 import UserDrawer from '../components/UserDrawer.vue'
@@ -12,8 +13,11 @@ import Toast from '../components/Toast.vue'
 import im from '../common/im'
 import userService from '../services/user'
 import { SERVER_PATH, get, post } from '../services/api'
+import { MSG_NAME } from '../common/enum'
+import toast from '../common/toast'
 
 const router = useRouter()
+const ticketListRef = ref(null)
 const juggle = im.getCurrent()
 
 // Current logged-in user (from localStorage, set by login)
@@ -59,12 +63,6 @@ onMounted(async () => {
           })
         })
         console.log('[MainView] IM 重连成功')
-        // 同步通知主进程也通过 imService 建立连接
-        if (window.electronAPI?.imConnect) {
-          window.electronAPI.imConnect(stored.token).then(res => {
-            console.log('[MainView] 主进程 im-connect 结果:', res)
-          })
-        }
       } catch (err) {
         console.error('[MainView] IM 重连失败:', err?.message || err)
         userService.logout()
@@ -205,6 +203,14 @@ const currentGroup = computed(() => {
 // concrete to click on.
 const hasNoSelection = computed(
   () => !currentConversation.value && !currentGroup.value
+)
+
+// 「还是未认领工单」的会话。认领成功后 status 会被推到 1（处理中），
+// 这个 computed 自动变 false — 右侧 AgentPanel 就跟着出来了，ChatMain
+// 也不再走「未认领分支」（banner 隐藏、发送按钮可用、回车恢复）。
+// 注意不要只看 isTicket — 认领之后的会话 isTicket 还是 true，但已经是普通会话了。
+const isTicketConversation = computed(
+  () => currentConversation.value?.isTicket === true && currentConversation.value?.status === 0
 )
 
 const currentMessages = computed(() => {
@@ -406,6 +412,76 @@ function handleGroupSelect(id) {
 
 function handleFilterChange(f) {
   filter.value = f
+}
+
+
+async function handleClaimTicket(ticketId) {
+  // Called from ChatMain's claim banner / header claim button
+  if (!ticketId) {
+    console.warn('[MainView] handleClaimTicket called without ticketId')
+    return
+  }
+  try {
+    await post(SERVER_PATH.TICKET_CLAIM(ticketId))
+
+    // 1. 把当前会话从"未分配"切到"处理中" → 驱动 ChatMain 的
+    //    isTicketUnassigned 变 false，自动隐藏认领 banner、放开发送按钮和回车
+    const conv = currentConversation.value
+    if (conv && conv.ticket_id === ticketId) {
+      conv.status = 1  // 1 = 处理中
+      // 同时把本地会话的 isTicket 标记保留，避免左侧列表突然把这个会话当成普通会话
+      // 但让 ChatMain 通过 status 判断走"已分配"分支（隐藏 banner / 启用发送）
+    }
+
+    // 2. 发系统通知消息（保留原有行为）
+    const user = currentUser.value
+    if (conv && conv.conversationId && user) {
+      const assignMsg = {
+        conversationType: conv.conversationType,
+        conversationId: conv.conversationId,
+        name: MSG_NAME.TICKET_ASSIGN,
+        content: JSON.stringify({
+          ticket_id: ticketId,
+          operator: {
+            id: user.id,
+            nickname: user.name || '用户',
+            avatar: user.avatar || ''
+          },
+          assignee: {
+            id: user.id,
+            nickname: user.name || '用户',
+            avatar: user.avatar || ''
+          },
+          assign_type: 0  // self-claim
+        })
+      }
+      // Send via IM SDK
+      const juggle = im.getCurrent()
+      if (juggle && typeof juggle.sendMessage === 'function') {
+        juggle.sendMessage(assignMsg).catch(e => {
+          console.warn('[MainView] Failed to send ticket assign notification', e)
+        })
+      }
+    }
+
+    // 3. 刷新未分配工单列表，让这条工单从"未分配"列表中消失
+    if (ticketListRef.value?.refresh) {
+      ticketListRef.value.refresh()
+    }
+
+    // 4. 切换 filter 到"我的" — 现在这个工单归我了，应该在"我的"列表里
+    filter.value = 'all'
+
+    // 5. 给这个会话建立/查找一个 agent session，让大模型建议链路跟上
+    if (conv) {
+      await lookupOrCreateSession(conv)
+    }
+
+    toast.success('工单已分配给您')
+  } catch (e) {
+    console.error('[MainView] Claim ticket failed', e)
+    toast.error('认领失败，请稍后重试')
+  }
 }
 
 async function handleRevokeTakeover() {
@@ -647,6 +723,7 @@ function clearTakeoverForConv(conversationType, conversationId) {
 
 <template>
   <div class="app-container">
+    <div class="titlebar-drag"></div>
     <NavSidebar
       :active-nav="activeNav"
       @open-user-drawer="showUserDrawer = true"
@@ -654,6 +731,7 @@ function clearTakeoverForConv(conversationType, conversationId) {
     />
 
     <ConversationList
+      v-if="filter !== 'unassigned'"
       :active-id="currentView === 'conversation' ? currentConvoId : null"
       :filter="filter"
       @select="handleConvoSelect"
@@ -678,6 +756,14 @@ function clearTakeoverForConv(conversationType, conversationId) {
       </template>
     </ConversationList>
 
+    <TicketList
+      v-if="filter === 'unassigned'"
+      ref="ticketListRef"
+      :filter="filter"
+      @select="handleConvoSelect"
+      @filter-change="handleFilterChange"
+    />
+
     <ChatMain
       v-if="!hasNoSelection"
       :conversation="currentView === 'conversation' ? currentConversation : null"
@@ -690,14 +776,16 @@ function clearTakeoverForConv(conversationType, conversationId) {
       :taken-over-agent="takenOverAgent"
       :auto-mode="autoMode"
       :pending-suggestions="currentPendingSuggestions"
+      :ticket="isTicketConversation ? currentConversation : null"
       @send="handleSend"
       @use-suggestion="handleUseSuggestion"
       @revoke-takeover="handleRevokeTakeover"
       @clear-suggestion="handleClearSuggestion"
+      @claim-ticket="handleClaimTicket"
     />
 
     <AgentPanel
-      v-if="!hasNoSelection"
+      v-if="!hasNoSelection &amp;&amp; !isTicketConversation"
       :agents="agents"
       :selected-agent-id="selectedAgentId"
       :mode="agentPanelMode"

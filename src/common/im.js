@@ -1,4 +1,4 @@
-import { reactive } from 'vue'
+import { reactive, ref } from 'vue'
 import JuggleChat from '../libs/juggleim-es-1.9.13'
 import { CONFIG } from '../config'
 import Storage from './storage'
@@ -10,6 +10,9 @@ let juggle = null
 let stateListener = null
 // Connection state tracking so callers can avoid issuing duplicate connect() calls.
 let _connecting = false
+
+// 响应式连接状态 — UI 可以拿来展示「连接中/已连接」之类的状态指示。
+export const connectionState = ref(false)
 
 // ---------------------------------------------------------------------------
 // Conversation tags (a.k.a. 会话分组).
@@ -90,10 +93,15 @@ function syncTakeoverTagFromList(list = []) {
  */
 function init() {
   if (juggle) return juggle
+  // OSS 上传适配器在当前项目里没有用到（SDK 内部 upload = upload || {} 兼容 undefined），
+  // 这里用 typeof 探测避免「OSS 未声明」抛 ReferenceError。如果将来接 OSS，
+  // 在这里 import 然后赋值给 option.upload 即可。
   const option = {
     appkey: CONFIG.APP_KEY,
-    upload: OSS,
     serverList: CONFIG.IM_SERVERS
+  }
+  if (typeof globalThis.OSS !== 'undefined' && globalThis.OSS) {
+    option.upload = globalThis.OSS
   }
   juggle = JuggleChat.init(option)
   // Register custom message types. Same names as snailchat's registration so
@@ -106,7 +114,8 @@ function init() {
       { name: MSG_NAME.CONTACT_CARD, isCount: true, isStorage: true },
       { name: MSG_NAME.ANIMATION_STICKER, isCount: true, isStorage: true },
       { name: MSG_NAME.TYPING_NTF, isStatus: true },
-      { name: MSG_NAME.REPLAY_MSG, isCount: true, isStorage: true }
+      { name: MSG_NAME.REPLAY_MSG, isCount: true, isStorage: true },
+      { name: MSG_NAME.TICKET_ASSIGN, isCount: true, isStorage: true }
     ])
   }
   // Keep the takeover-tag local set in sync with the SDK. The events come
@@ -126,7 +135,17 @@ function getCurrent() {
 }
 
 function isConnected() {
-  return !!(juggle && juggle.isConnected && juggle.isConnected())
+  // 双写：优先看响应式 ref（用于 watch），但也直接问 SDK 兜底
+  // 那些没经过 connect() 的场景（比如 juggle.isConnected 内部状态切换）。
+  const fromRef = connectionState.value
+  const fromSdk = !!(juggle && juggle.isConnected && juggle.isConnected())
+  return fromRef || fromSdk
+}
+
+function setConnectionState(connected) {
+  if (connectionState.value !== connected) {
+    connectionState.value = connected
+  }
 }
 
 function teardownListener() {
@@ -150,16 +169,19 @@ function connect(user, callbacks = {}) {
   // Idempotent: if already connected, resolve immediately.
   if (juggle.isConnected()) {
     console.log('[im] already connected, resolving success immediately')
+    setConnectionState(true)
     if (success) success(juggle.getCurrentUser())
     return
   }
 
   teardownListener()
   _connecting = true
+  setConnectionState(false)
   stateListener = ({ state }) => {
     console.log('[im] state changed:', state)
     if (state === ConnectionState.CONNECTED) {
       _connecting = false
+      setConnectionState(true)
       const imUser = juggle.getCurrentUser()
       console.log('[im] CONNECTED — imUser:', imUser)
       // Refresh the stored token with whatever the IM server returned.
@@ -168,6 +190,7 @@ function connect(user, callbacks = {}) {
       if (success) success(imUser)
     } else if (state === ConnectionState.DISCONNECTED) {
       _connecting = false
+      setConnectionState(false)
       console.log('[im] DISCONNECTED')
     }
   }
@@ -187,6 +210,7 @@ function connect(user, callbacks = {}) {
     },
     (err) => {
       _connecting = false
+      setConnectionState(false)
       console.error('[im] juggle.connect() rejected:', err?.message || err)
       if (error) error(juggle, err)
     }
@@ -199,6 +223,7 @@ function connect(user, callbacks = {}) {
  */
 function disconnect() {
   teardownListener()
+  setConnectionState(false)
   // The takeover tag is per-user — clear the local mirror so a different
   // account signing in on the same browser doesn't see stale rows.
   takeoverTagConversations.clear()
@@ -330,10 +355,43 @@ function msgShortFormat(message) {
   if (name === MSG_NAME.TYPING_NTF) return ''
   if (name === MSG_NAME.REPLAY_MSG) return '[群接龙]'
   if (name === MSG_NAME.GROUP_NTF) return '[群通知]'
+  if (name === MSG_NAME.TICKET_ASSIGN) return formatTicketAssignPreview(content)
   if (name === MSG_NAME.FRIEND_NTF) return '[好友通知]'
   if (name === MessageType.RECALL_INFO) return '[撤回了一条消息]'
   if (name === MessageType.CALL_1V1_FINISHED) return '[通话结束]'
   return '[消息]'
+}
+
+// Render a short preview for a jgm:ticketassign message. The IM SDK
+// normally hands us the content as an object, but on freshly parsed
+// payloads (or older message records) it can arrive as a JSON string —
+// parse defensively so we never blow up the conversation list.
+function formatTicketAssignPreview(rawContent) {
+  const payload = parseTicketAssignContent(rawContent)
+  if (!payload) return '[工单分配]'
+  const op = payload.operator?.nickname || ''
+  const ae = payload.assignee?.nickname || ''
+  if (payload.assign_type === 0) {
+    // 自助认领
+    return ae ? `${ae} 认领了工单` : '已认领工单'
+  }
+  // 分配给他人
+  if (op && ae) return `由 ${op} 分配给 ${ae}`
+  if (ae) return `已分配给 ${ae}`
+  return '[工单分配]'
+}
+
+function parseTicketAssignContent(rawContent) {
+  if (!rawContent) return null
+  if (typeof rawContent === 'object') return rawContent
+  if (typeof rawContent === 'string') {
+    try {
+      return JSON.parse(rawContent)
+    } catch {
+      return null
+    }
+  }
+  return null
 }
 
 function isUnreadTag(conversation) {
@@ -383,6 +441,8 @@ export default {
   addConversationToTakeoverTag,
   removeConversationFromTakeoverTag,
   fetchConversationTags,
+  // 响应式连接状态 — 用于 UI 展示「连接中 / 已连接」之类的指示
+  connectionState,
   Event,
   ConnectionState,
   ErrorType,

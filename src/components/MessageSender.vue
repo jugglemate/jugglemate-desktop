@@ -27,6 +27,12 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
+  // 只挡"发送"动作（发送按钮 + 回车），不影响 textarea 输入。
+  // 用于未认领工单场景：让用户能继续敲字触发认领提示，但不许真的发出去。
+  sendDisabled: {
+    type: Boolean,
+    default: false
+  },
   // Comma-separated `accept` value for the file input. Defaults to all
   // file types so the picker surfaces images, videos, PDFs, and any other
   // attachment. The parent can pass `image/*` (or a specific mime list)
@@ -78,6 +84,10 @@ function onSendClick() {
 }
 
 function submit() {
+  if (props.sendDisabled) {
+    // 仅阻断"发送"，textarea 仍然可输入；调用方根据 state 决定后续行为。
+    return
+  }
   const value = text.value.trim()
   if (!value) return
   emit('send', value)
@@ -139,7 +149,7 @@ function onFileChange(e) {
     ></textarea>
     <button
       class="jm-sender__btn"
-      :disabled="disabled || !text.trim()"
+      :disabled="disabled || sendDisabled || !text.trim()"
       type="button"
       @click="onSendClick"
     >

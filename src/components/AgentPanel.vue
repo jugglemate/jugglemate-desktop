@@ -176,7 +176,7 @@ onUnmounted(() => { document.removeEventListener('click', onClickOutside) })
   width: 288px;
   min-width: 288px;
   height: calc(100vh - 20px);
-  margin: 10px;
+  margin: 10px 10px 10px 0;
   background: #FFFFFF;
   border-radius: var(--radius-md);
   display: flex;

@@ -25,6 +25,7 @@ import MessageReaction from './MessageReaction.vue'
 import MessageTimeline from './MessageTimeline.vue'
 import MessageUnknown from './MessageUnknown.vue'
 import MessageRecall from './MessageRecall.vue'
+import MessageTicketAssign from './MessageTicketAssign.vue'
 
 const props = defineProps({
   message: {
@@ -66,6 +67,7 @@ const kind = computed(() => {
   if (m.name === MessageType.MERGE) return 'merge'
   if (m.name === MSG_NAME.CONTACT_CARD) return 'card'
   if (m.name === MSG_NAME.ANIMATION_STICKER) return 'sticker'
+  if (m.name === MSG_NAME.TICKET_ASSIGN) return 'ticketassign'
   return 'unknown'
 })
 
@@ -109,6 +111,7 @@ function onPreview(payload) {
   <!-- Timeline / recall are full-width rows; no avatar or bubble. -->
   <MessageTimeline v-if="kind === 'timeline'" :message="message" />
   <MessageRecall v-else-if="kind === 'recall'" :message="message" />
+  <MessageTicketAssign v-else-if="kind === 'ticketassign'" :message="message" />
 
   <!-- Default: bubble with avatar. -->
   <MessageBubble

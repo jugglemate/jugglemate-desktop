@@ -42,7 +42,8 @@ export const MSG_NAME = {
   CONTACT_CARD: 'jgd:contactcard',
   ANIMATION_STICKER: 'snl:sticker',
   TYPING_NTF: 'snl:typing',
-  REPLAY_MSG: 'snl:replay'
+  REPLAY_MSG: 'snl:replay',
+  TICKET_ASSIGN: 'jgm:ticketassign'
 }
 
 export const TYPING_STATUS = {
