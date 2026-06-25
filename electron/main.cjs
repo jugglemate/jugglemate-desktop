@@ -2,65 +2,7 @@ const { app, BrowserWindow, ipcMain } = require('electron')
 const path = require('path')
 const http = require('http')
 const fs = require('fs')
-const imService = require('./im-service.cjs')
-
 let mainWindow = null
-
-// 初始化 IM SDK（不连接，等 token）
-console.log('[main] 应用启动，初始化 IM SDK...')
-imService.init()
-console.log('[main] IM SDK 初始化完成')
-
-// 注册消息回调 → 通过 IPC 发给渲染进程
-imService.onMessage((message) => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('im-message-received', {
-      messageId: message.messageId || message.msg_id || message.id || '',
-      senderId: message.sender?.id || message.senderId || '',
-      senderName: message.sender?.name || message.sender?.nickName || '',
-      conversationId: message.conversationId || '',
-      conversationType: message.conversationType,
-      content: message.content,
-      sentTime: message.sentTime || message.sendTime || Date.now(),
-      name: message.name || ''
-    })
-  }
-})
-
-// IPC：渲染进程传来 token，主进程连接 IM
-ipcMain.handle('im-connect', async (_event, token) => {
-  console.log('[main] im-connect 收到连接请求')
-  try {
-    const user = await imService.connect(token)
-    console.log('[main] im-connect 登录成功，用户 ID:', user?.id || user?.userId)
-    return { success: true, userId: user?.id || user?.userId }
-  } catch (err) {
-    console.error('[main] im-connect 登录失败:', err?.message || err)
-    return { success: false, error: err.message }
-  }
-})
-
-// IPC：获取当前 IM 用户
-ipcMain.handle('im-get-current-user', () => {
-  return imService.getCurrentUser()
-})
-
-// IPC：检查 IM 连接状态
-ipcMain.handle('im-get-status', () => {
-  const user = imService.getCurrentUser()
-  return {
-    running: !!imService,
-    connected: !!user,
-    userId: user?.id || user?.userId || null
-  }
-})
-
-// IPC：渲染进程设置 API Server 地址，同步到 imService
-ipcMain.handle('im-set-api-server', async (_event, apiBaseUrl) => {
-  console.log('[main] im-set-api-server received:', apiBaseUrl)
-  imService.updateApiBaseUrl(apiBaseUrl)
-  return { success: true }
-})
 
 // ====================== 窗口控制 IPC ======================
 
