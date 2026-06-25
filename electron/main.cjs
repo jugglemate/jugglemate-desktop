@@ -202,10 +202,10 @@ async function createWindow() {
     }
   )
 
-  // if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
-  //   mainWindow.loadURL('http://localhost:5173')
-  //   mainWindow.webContents.openDevTools()
-  // } else {
+  if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
+    mainWindow.loadURL('http://localhost:5174')
+    mainWindow.webContents.openDevTools()
+  } else {
   //   // 生产模式：启动内部静态服务器，通过 loadURL 加载
     const rootDir = path.join(__dirname, '../dist')
     try {
@@ -216,7 +216,7 @@ async function createWindow() {
       // fallback: 降级到 loadFile
       mainWindow.loadFile(path.join(rootDir, 'index.html'))
     }
-  // }
+  }
 
   // 快捷键：Cmd+Shift+I 打开 DevTools（开发/生产均可用）
   mainWindow.webContents.on('before-input-event', (_event, input) => {

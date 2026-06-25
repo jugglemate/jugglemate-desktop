@@ -157,7 +157,7 @@
 
 ### 6.1 后端地址与 AppKey
 
-- API 基址：`http(s)://localhost:8050/jim/...`（见 `src/config.js`，**当前为硬编码**，未走环境变量）。
+- API 基址：`http(s)://localhost:8050/jmate/...`（见 `src/config.js`，**当前为硬编码**，未走环境变量）。
 - IM WebSocket：`wss://ws.snailchat.im`（支持多个 serverList）。
 - AppKey：`nwm6fxqt2aeebhb7`（硬编码）。
 
@@ -165,8 +165,8 @@
 
 | 路径 | 方法 | 用途 | 错误码 |
 | --- | --- | --- | --- |
-| `/jim/user/register` | POST | 注册；返回 `user_id / im_token / nick_name / avatar / authorization` | 17001 / 17008 / 17009 / 17010 |
-| `/jim/user/login` | POST | 登录；返回同上 | 17001 / 17009 / 17010 |
+| `/jmate/user/register` | POST | 注册；返回 `user_id / im_token / nick_name / avatar / authorization` | 17001 / 17008 / 17009 / 17010 |
+| `/jmate/user/login` | POST | 登录；返回同上 | 17001 / 17009 / 17010 |
 
 `request.js` 公共头部：`AppKey`、`Authorization`（从 localStorage 取）、`Content-Type: application/json`；遇 401 自动清 token 跳登录。
 
