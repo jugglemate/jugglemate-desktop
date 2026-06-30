@@ -3,7 +3,6 @@ import { request, buildUrl } from '../common/request'
 
 const SERVER_PATH = {
   // User APIs
-  USER_REGISTER: buildUrl('/jmate/user/register'),
   USER_LOGIN: buildUrl('/jmate/user/login'),
 
   // Agent APIs

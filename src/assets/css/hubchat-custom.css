@@ -1106,40 +1106,85 @@
   box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.12);
 }
 
-/* Filter tabs container — rounded pill background */
+/* Filter tabs container — tab 风格：横向排列，active 项蓝色文字+下划线，无背景色块 */
 .tyn-sidebar__filters {
   display: flex;
-  gap: 0;
-  padding: 4px 16px;
-  margin: 16px 12px;
-  background: #eee;
-  border-radius: 10px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  align-items: center;
+  gap: 18px;
+  padding: 12px 16px 0;
+  margin: 0 0 8px;
+  background: transparent;
+  box-shadow: none;
+  border-bottom: 1px solid #E5E7EB;
 }
 
 .tyn-sidebar__filter {
-  flex: 1;
-  padding: 8px 0;
-  border-radius: 8px;
-  font-size: 14px;
+  position: relative;
+  padding: 0 2px 10px;
+  font-size: 15px;
   font-weight: 500;
   border: none;
   background: transparent;
   color: #6B7280;
   cursor: pointer;
-  transition: all 150ms ease;
+  transition: color 150ms ease;
   font-family: inherit;
-  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .tyn-sidebar__filter:hover {
   color: #374151;
 }
 
+/* 数字徽章：浅灰圆角背景，跟在 label 后面 */
+.tyn-sidebar__filter-label {
+  /* label 区域要明确可点击：和父 button 一致的光标，且不允许文字被选中。
+     pointer-events: auto 兜底，防止任何祖先元素把事件吞了。 */
+  cursor: pointer;
+  user-select: none;
+  pointer-events: auto;
+}
+
+.tyn-sidebar__filter-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 18px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #6B7280;
+  background: #F1F3F5;
+  border-radius: 9px;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  pointer-events: auto;
+}
+
+/* active 态：蓝色文字 + 数字徽章变浅蓝 + 底部下划线 */
 .tyn-sidebar__filter.active {
-  background: #FFFFFF;
-  color: #1F2937;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  color: #1421d2;
+  font-weight: 600;
+}
+
+.tyn-sidebar__filter.active .tyn-sidebar__filter-count {
+  color: #1421d2;
+  background: #E0E7FF;
+}
+
+.tyn-sidebar__filter.active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: #1421d2;
+  border-radius: 2px;
 }
 
 .tyn-sidebar__convos {
@@ -2180,11 +2225,13 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-md);
+  /* 整体圆形：覆盖默认的 var(--radius-md) 方角，应用到会话列表、顶置、导航栏所有尺寸 */
+  border-radius: 50%;
   background-size: cover;
   background-position: center;
   background-color: var(--agent-blue);
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .tyn-avatar--sm {

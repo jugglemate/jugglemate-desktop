@@ -1,0 +1,27 @@
+# OpenSSL config for generating a macOS code-signing self-signed certificate.
+# Used by mac-sign.sh — you usually don't need to touch this.
+
+[ req ]
+default_bits       = 2048
+default_md         = sha256
+prompt             = no
+distinguished_name = dn
+x509_extensions    = v3_code_sign
+
+[ dn ]
+# CN is what codesign / security will show as the "identity".
+# O (Organization) is required by macOS for code-signing certs; codesign
+# rejects certs without it with a misleading CSP error.
+CN = JuggleMate Self-Signed Code Sign
+O  = JuggleMate
+C  = US
+
+[ v3_code_sign ]
+# This is the critical bit: extendedKeyUsage must include codeSigning,
+# otherwise macOS will refuse to use the cert for signing.
+extendedKeyUsage     = critical, codeSigning
+keyUsage             = critical, digitalSignature
+basicConstraints     = critical, CA:FALSE
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always
+subjectAltName       = DNS:localhost

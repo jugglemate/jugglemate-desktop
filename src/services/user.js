@@ -5,12 +5,13 @@ import im from '../common/im'
 import { STORAGE, ERROR_CODE } from '../common/enum'
 
 /**
- * Map the login/register API response to the user record shape used
- * throughout the app. Mirrors the snailchat convention:
+ * Map the login API response to the user record shape used throughout
+ * the app. Mirrors the snailchat convention:
  *   user_id  → id
  *   im_token → token
  *   nick_name → name
  *   avatar   → portrait
+ *   role     → role (1 = admin, others = regular agent; server-defined)
  * Plus a `isUsed` flag for the account-switcher list.
  */
 function buildUser(data, { isUsed = false } = {}) {
@@ -20,6 +21,7 @@ function buildUser(data, { isUsed = false } = {}) {
     authorization: data.authorization,
     name: data.nick_name,
     portrait: data.avatar,
+    role: data.role,
     isUsed
   }
 }
@@ -48,43 +50,12 @@ function upsertInUserList(user) {
   Storage.set(STORAGE.USERS, list)
 }
 
-function addToUserList(user) {
-  const list = Storage.get(STORAGE.USERS) || []
-  const idx = list.findIndex((u) => u.id === user.id)
-  if (idx === -1) {
-    list.push({ ...user, isUsed: false })
-  } else {
-    list[idx] = { ...list[idx], ...user, isUsed: false }
-  }
-  Storage.set(STORAGE.USERS, list)
-}
-
 function clearActiveUser() {
   const list = Storage.get(STORAGE.USERS) || []
   list.forEach((u) => {
     u.isUsed = false
   })
   Storage.set(STORAGE.USERS, list)
-}
-
-/**
- * Register new user
- * @param {string} account - Username (6-20 chars, letters and numbers)
- * @param {string} password - Password (min 6 chars)
- */
-async function register(account, password) {
-  const res = await request(SERVER_PATH.USER_REGISTER, {
-    method: 'POST',
-    body: JSON.stringify({ account, password })
-  })
-
-  if (res.code === ERROR_CODE.SUCCESS) {
-    // Register does not log the user in — cache the new account in the
-    // user list so it can be picked up when they log in for the first time.
-    addToUserList(buildUser(res.data))
-  }
-
-  return res
 }
 
 /**
@@ -152,7 +123,6 @@ function getStoredUsers() {
 }
 
 export default {
-  register,
   login,
   logout,
   getCurrentUser,

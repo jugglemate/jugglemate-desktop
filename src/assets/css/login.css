@@ -370,34 +370,6 @@
 }
 
 /* ==========================================================================
-   Sign Up CTA
-   ========================================================================== */
-
-.login-signup-cta {
-  text-align: center;
-  margin-top: 32px;
-  padding-top: 24px;
-  border-top: 1px solid #E5E7EB;
-}
-
-.login-signup-cta__text {
-  font-size: 14px;
-  color: #6B7280;
-}
-
-.login-signup-cta__link {
-  color: #2563EB;
-  text-decoration: none;
-  font-weight: 500;
-  transition: color 0.15s ease;
-}
-
-.login-signup-cta__link:hover {
-  color: #1D4ED8;
-  text-decoration: underline;
-}
-
-/* ==========================================================================
    Server Settings Button
    ========================================================================== */
 

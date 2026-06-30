@@ -1,5 +1,7 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
+import userService from '../services/user'
+import Avatar from './Avatar.vue'
 
 const props = defineProps({
   activeNav: {
@@ -13,6 +15,11 @@ const emit = defineEmits(['open-user-drawer', 'nav-change'])
 const isElectron = typeof window !== 'undefined' && window.electronAPI?.isElectron
 const isMac = isElectron && window.electronAPI?.platform === 'darwin'
 const isMaximized = ref(false)
+
+// 当前登录用户，用于把"用户信息"那一项展示成头像。
+const currentUser = computed(() => userService.getCurrentUser())
+const currentUserName = computed(() => currentUser.value?.name || currentUser.value?.nick_name || '用户')
+const currentUserPortrait = computed(() => currentUser.value?.portrait || currentUser.value?.avatar || '')
 
 function handleMinimize() {
   window.electronAPI?.windowMinimize?.()
@@ -38,19 +45,21 @@ function handleClose() {
       <button class="nav-sidebar__tl nav-sidebar__tl--maximize" title="最大化" @click="handleMaximize"></button>
     </div>
     <div class="nav-sidebar__items">
+      <!-- 用户信息：直接展示当前用户的头像，不再用图标+文字。 -->
       <button
-        class="nav-sidebar__item"
-        :class="{ 'nav-sidebar__item--active': activeNav === 'user' }"
+        class="nav-sidebar__avatar-btn"
+        :class="{ 'nav-sidebar__avatar-btn--active': activeNav === 'user' }"
         @click="emit('open-user-drawer')"
         title="用户信息"
       >
-        <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="11" cy="8" r="4" stroke="currentColor" stroke-width="1.5"/>
-          <path d="M4 20c0-3.866 3.134-7 7-7s7 3.134 7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-        </svg>
-        <span class="nav-sidebar__label">用户信息</span>
+        <Avatar
+          :name="currentUserName"
+          :avatar="currentUserPortrait"
+          size="md"
+        />
       </button>
 
+      <!-- 消息：active 态只换图标+文字颜色，不再加蓝色背景块。 -->
       <button
         class="nav-sidebar__item"
         :class="{ 'nav-sidebar__item--active': activeNav === 'messages' }"
@@ -83,7 +92,7 @@ function handleClose() {
 
 /* macOS: 为原生 traffic lights 留出空间 */
 .nav-sidebar--mac {
-  padding-top: 40px;
+  padding-top: 50px;
 }
 
 /* Windows 自定义窗口控制按钮 */
@@ -137,6 +146,33 @@ function handleClose() {
   -webkit-app-region: no-drag;
 }
 
+/* 用户头像按钮：圆形 36px 头像 + 选中态外圈描边。 */
+.nav-sidebar__avatar-btn {
+  width: 40px;
+  height: 40px;
+  margin: 0 auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: box-shadow 0.15s;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+
+.nav-sidebar__avatar-btn:hover {
+  outline-color: rgba(20, 33, 210, 0.35);
+}
+
+.nav-sidebar__avatar-btn--active {
+  outline-color: #1421d2;
+}
+
 .nav-sidebar__item {
   width: 48px;
   height: 48px;
@@ -151,18 +187,18 @@ function handleClose() {
   cursor: pointer;
   margin: 0 auto;
   border-radius: 8px;
-  transition: color 0.15s, background 0.15s;
+  /* 只换颜色，不再加 background。 */
+  transition: color 0.15s;
   padding: 0;
 }
 
 .nav-sidebar__item:hover {
   color: #9CA3AF;
-  background: rgba(0, 0, 0, 0.04);
 }
 
+/* active 态：沿用原先的蓝色作为前景色（图标 + 文字），不铺背景。 */
 .nav-sidebar__item--active {
-  background: linear-gradient(320deg, #1421d2 5%, #667eea 80%);
-  color: #fff;
+  color: #1421d2;
 }
 
 .nav-sidebar__label {

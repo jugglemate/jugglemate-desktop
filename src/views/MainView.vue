@@ -13,7 +13,7 @@ import Toast from '../components/Toast.vue'
 import im from '../common/im'
 import userService from '../services/user'
 import { SERVER_PATH, get, post } from '../services/api'
-import { MSG_NAME } from '../common/enum'
+import { MSG_NAME, SESSION_FILTER } from '../common/enum'
 import toast from '../common/toast'
 
 const router = useRouter()
@@ -23,7 +23,9 @@ const juggle = im.getCurrent()
 // Current logged-in user (from localStorage, set by login)
 const currentUser = computed(() => userService.getCurrentUser())
 const currentUserName = computed(() => currentUser.value?.name || '用户')
-const currentUserRole = computed(() => '客服坐席')
+// `role` 来自登录接口：1 = 管理员（在用户信息抽屉中显示"管理后台"入口），
+// 其他值 = 普通坐席。具体业务含义由后端定义。
+const currentUserRole = computed(() => currentUser.value?.role ?? null)
 
 // Navigation & drawer state
 const activeNav = ref('messages')
@@ -82,7 +84,25 @@ const currentView = ref('conversation') // 'conversation' | 'group'
 const currentConvoId = ref(null)
 const currentConversation = ref(null)
 const currentGroupId = ref(null)
-const filter = ref('all')
+// `filter` 决定 tyn-sidebar__convos 区域显示什么：
+//   'mine'       — 我的（已分配给我的会话）
+//   'unassigned' — 未分配的（待分配工单，由 TicketList 渲染）
+//   'all'        — 所有的（所有会话）
+// tab UI 和容器统一在 MainView 维护，切换 filter 只换 convos 内容。
+const filter = ref('mine')
+
+// 各 filter 下的未读/待办数量。子组件可通过 defineExpose 暴露的 refresh()
+// 在挂载和数据变化时回填；目前先占位为 0，等数据流接通后展示真实数字。
+const filterCounts = reactive({ mine: 0, unassigned: 0, all: 0 })
+
+// 顶部 tab 过滤器配置。label 给 UI 看，key 跟 `filter` ref 的取值对齐。
+// SESSION_FILTER 是 enum.js 里定义的常量集合，这里直接复用保证 key 跟 `filter`
+// ref 的取值始终一致 — 写错字符串的代价太高了。
+const sidebarFilters = [
+  { key: SESSION_FILTER.MINE, label: '我的' },
+  { key: SESSION_FILTER.UNASSIGNED, label: '未分配的' },
+  { key: SESSION_FILTER.ALL, label: '全部' }
+]
 
 // Two independent Agent-related states. Keep them separate on purpose:
 //   - selectedAgentId: which Agent's style the operator wants to write in.
@@ -424,6 +444,16 @@ async function handleClaimTicket(ticketId) {
   try {
     await post(SERVER_PATH.TICKET_CLAIM(ticketId))
 
+    // 0. 给当前会话打上 assigned + my_ticket 两个 tag。assign 在前 — 服务端
+    //    拿到 assigned 之后，其他设备在 "未分配" 列表里就看不到这个会话了。
+    //    my_ticket 跟 assigned 是相互独立的 tag 成员，所以要单独加一次。
+    //    失败仅 warn — UI 上 ticket 状态已经是"处理中"了，不阻断主流程。
+    const convForTag = currentConversation.value
+    if (convForTag && convForTag.conversationId !== undefined) {
+      void im.addConversationToAssignedTag(convForTag)
+      void im.addConversationToMyTicketTag(convForTag)
+    }
+
     // 1. 把当前会话从"未分配"切到"处理中" → 驱动 ChatMain 的
     //    isTicketUnassigned 变 false，自动隐藏认领 banner、放开发送按钮和回车
     const conv = currentConversation.value
@@ -470,17 +500,17 @@ async function handleClaimTicket(ticketId) {
     }
 
     // 4. 切换 filter 到"我的" — 现在这个工单归我了，应该在"我的"列表里
-    filter.value = 'all'
+    filter.value = SESSION_FILTER.MINE
 
     // 5. 给这个会话建立/查找一个 agent session，让大模型建议链路跟上
     if (conv) {
       await lookupOrCreateSession(conv)
     }
 
-    toast.success('工单已分配给您')
+    // toast.success('工单已分配给您')
   } catch (e) {
     console.error('[MainView] Claim ticket failed', e)
-    toast.error('认领失败，请稍后重试')
+    // toast.error('认领失败，请稍后重试')
   }
 }
 
@@ -730,39 +760,53 @@ function clearTakeoverForConv(conversationType, conversationId) {
       @nav-change="handleNavChange"
     />
 
-    <ConversationList
-      v-if="filter !== 'unassigned'"
-      :active-id="currentView === 'conversation' ? currentConvoId : null"
-      :filter="filter"
-      @select="handleConvoSelect"
-      @filter-change="handleFilterChange"
-      @conversation-op="handleConversationOp"
-      @suggestion-received="handleSuggestionReceived"
-    >
-      <template #groups>
-        <div
-          v-for="g in groups"
-          :key="g.id"
-          class="tyn-group-item"
-          :class="{ active: currentView === 'group' && currentGroupId === g.id }"
-          @click="handleGroupSelect(g.id)"
+    <aside class="tyn-sidebar">
+      <!-- 顶部 tab 过滤器：切换时只换下方 convos 区内容，filters 区自身不重建。 -->
+      <div class="tyn-sidebar__filters">
+        <button
+          v-for="f in sidebarFilters"
+          :key="f.key"
+          class="tyn-sidebar__filter"
+          :class="{ active: filter === f.key }"
+          @click="() => { console.log('[filter] click', f.key); filter = f.key }"
         >
-          <div class="tyn-group-item__icon">👥</div>
-          <div>
-            <div style="font-weight: 500;">{{ g.name }}</div>
-            <div style="font-size: 11px; color: var(--text-tertiary);">{{ g.agentCount }} 个 Agent</div>
-          </div>
-        </div>
-      </template>
-    </ConversationList>
+          <span class="tyn-sidebar__filter-label">{{ f.label }}</span>
+          <!-- 未读/待办数为 0 时不展示徽章，避免空标签占位 -->
+          <span
+            v-if="filterCounts[f.key]"
+            class="tyn-sidebar__filter-count"
+          >{{ filterCounts[f.key] }}</span>
+        </button>
+      </div>
 
-    <TicketList
-      v-if="filter === 'unassigned'"
-      ref="ticketListRef"
-      :filter="filter"
-      @select="handleConvoSelect"
-      @filter-change="handleFilterChange"
-    />
+      <!--
+        下方 convos 区：filter='unassigned' 渲染工单列表，其他渲染会话列表。
+        切 tab 时这一块会被换掉，filters 容器不动。
+      -->
+      <ConversationList
+        :active-id="currentView === 'conversation' ? currentConvoId : null"
+        :filter="filter"
+        @select="handleConvoSelect"
+        @conversation-op="handleConversationOp"
+        @suggestion-received="handleSuggestionReceived"
+      >
+        <template #groups>
+          <div
+            v-for="g in groups"
+            :key="g.id"
+            class="tyn-group-item"
+            :class="{ active: currentView === 'group' && currentGroupId === g.id }"
+            @click="handleGroupSelect(g.id)"
+          >
+            <div class="tyn-group-item__icon">👥</div>
+            <div>
+              <div style="font-weight: 500;">{{ g.name }}</div>
+              <div style="font-size: 11px; color: var(--text-tertiary);">{{ g.agentCount }} 个 Agent</div>
+            </div>
+          </div>
+        </template>
+      </ConversationList>
+    </aside>
 
     <ChatMain
       v-if="!hasNoSelection"
@@ -807,6 +851,7 @@ function clearTakeoverForConv(conversationType, conversationId) {
       :show="showUserDrawer"
       :user-name="currentUserName"
       :user-id="currentUserId"
+      :user-role="currentUserRole"
       @close="showUserDrawer = false"
       @logout="handleLogout"
     />

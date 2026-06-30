@@ -2,7 +2,7 @@ import { reactive, ref } from 'vue'
 import JuggleChat from '../libs/juggleim-es-1.9.13'
 import { CONFIG } from '../config'
 import Storage from './storage'
-import { STORAGE, MSG_NAME } from './enum'
+import { STORAGE, MSG_NAME, CONVERSATION_TAG_ID } from './enum'
 
 const { Event, ConnectionState, ErrorType } = JuggleChat
 
@@ -28,6 +28,70 @@ export const connectionState = ref(false)
 // events that we listen to in init() to keep the set in sync — including
 // when the change came from another device.
 // ---------------------------------------------------------------------------
+// 工单相关的两个会话 tag id。和 enum.js 里的 CONVERSATION_TAG_ID 一一对应，
+// 这里再取个别名方便在文件内引用，并且把它们也声明成可导出的常量。
+//   ASSIGNED_TAG_ID  — 工单被认领后，对应会话被打上（全员共享）
+//   MY_TICKET_TAG_ID — 仅当前认领人额外打上（用于"我的"过滤）
+const ASSIGNED_TAG_ID = CONVERSATION_TAG_ID.ASSIGNED
+const MY_TICKET_TAG_ID = CONVERSATION_TAG_ID.MY_TICKET
+// 响应式集合，key = `${conversationType}_${conversationId}`。和 takeover 那组
+// 一样的设计：SDK 是 source of truth，本地这份 set 是 sidebar 用来做 O(1)
+// 渲染判断的镜像。SDK 的 TAG_CONVERSATION_ADDED / TAG_CONVERSATION_REMOVED
+// 事件会驱动本地的 add/remove（见下面的 init 监听），包括来自其他设备的变更。
+const assignedTagConversations = reactive(new Set())
+const myTicketTagConversations = reactive(new Set())
+
+// 判断某会话是否被打上 assigned / my_ticket tag（本地 set 镜像的便捷封装）。
+// 注意：tag 是多槽位的，任意一个会话都可以同时在多个 tag 组里。
+function isInAssignedTag(c) {
+  if (!c) return false
+  return assignedTagConversations.has(getConversationKey(c))
+}
+function isInMyTicketTag(c) {
+  if (!c) return false
+  return myTicketTagConversations.has(getConversationKey(c))
+}
+
+// 把 TAG_CONVERSATION_ADDED / TAG_CONVERSATION_REMOVED 事件分派到对应 tag 的
+// 本地 set。和 applyTagChange 的 takeover 版本结构一致，合并为一个分发函数，
+// 因为三种 tag（takeover / assigned / my_ticket）的处理方式完全一样。
+function applyTicketTagChange(event, payload = {}) {
+  const { id, conversations = [] } = payload
+  if (id === undefined || id === null) return
+  let target = null
+  if (id === TAKEOVER_TAG_ID) target = takeoverTagConversations
+  else if (id === ASSIGNED_TAG_ID) target = assignedTagConversations
+  else if (id === MY_TICKET_TAG_ID) target = myTicketTagConversations
+  if (!target) return
+  for (const c of conversations) {
+    const key = getConversationKey(c)
+    if (!key) continue
+    if (event === 'add') target.add(key)
+    else if (event === 'remove') target.delete(key)
+  }
+}
+
+// 用拉回来的会话列表同步 assigned / my_ticket 两个本地 set。逻辑和
+// reconcileTakeoverTag 完全一样，只是把目标 set 换掉。多次调用是幂等的：
+// 先清空再用 server 的视图重写，比增量 patch 简单也更不容易出错。
+function syncTicketTagsFromList(list = []) {
+  if (!Array.isArray(list)) return { assigned: [], mine: [] }
+  const inAssigned = []
+  const inMine = []
+  for (const c of list) {
+    if (!Array.isArray(c.tags)) continue
+    const key = getConversationKey(c)
+    if (!key) continue
+    if (c.tags.some(t => t?.tag === ASSIGNED_TAG_ID)) inAssigned.push(c)
+    if (c.tags.some(t => t?.tag === MY_TICKET_TAG_ID)) inMine.push(c)
+  }
+  assignedTagConversations.clear()
+  for (const c of inAssigned) assignedTagConversations.add(getConversationKey(c))
+  myTicketTagConversations.clear()
+  for (const c of inMine) myTicketTagConversations.add(getConversationKey(c))
+  return { assigned: inAssigned, mine: inMine }
+}
+
 const TAKEOVER_TAG_ID = 'jm_takeover'
 // Keyed by `${conversationType}_${conversationId}` — type is part of the key
 // because a private chat and a group chat can share the same numeric id.
@@ -124,8 +188,11 @@ function init() {
   // authoritative answer once the round-trip completes — even if the call
   // was triggered from another device.
   if (typeof juggle.on === 'function') {
-    juggle.on(Event.TAG_CONVERSATION_ADDED, (payload) => applyTagChange('add', payload))
-    juggle.on(Event.TAG_CONVERSATION_REMOVED, (payload) => applyTagChange('remove', payload))
+    // 单一分发函数同时接管 takeover / assigned / my_ticket 三种 tag 的本地
+    // set 同步。事件来源可能是本机调用，也可能是其他设备 — 两种情况都需要
+    // 让本地 set 最终和服务端一致。
+    juggle.on(Event.TAG_CONVERSATION_ADDED, (payload) => applyTicketTagChange('add', payload))
+    juggle.on(Event.TAG_CONVERSATION_REMOVED, (payload) => applyTicketTagChange('remove', payload))
   }
   return juggle
 }
@@ -226,7 +293,11 @@ function disconnect() {
   setConnectionState(false)
   // The takeover tag is per-user — clear the local mirror so a different
   // account signing in on the same browser doesn't see stale rows.
+  // assigned / my_ticket 同样是 per-user 的（my_ticket 的语义是"我的"），
+  // 登出时一并清空。
   takeoverTagConversations.clear()
+  assignedTagConversations.clear()
+  myTicketTagConversations.clear()
   if (juggle && typeof juggle.disconnect === 'function') {
     try {
       juggle.disconnect()
@@ -257,6 +328,82 @@ function sendTyping(conversation, content) {
 // reactive set stays consistent and the takeover tag id is defined in one
 // place.
 // ---------------------------------------------------------------------------
+
+// 给指定会话打上 / 摘掉 assigned tag（业务调用点：工单被认领 / 转移 / 释放）。
+// 内部构造的 payload 形如 { id: 'assigned', conversations: [...] }，调用
+// juggle.addConversationsToTag / removeConversationsFromTag。SDK 本身允许一个
+// tag 里装任意多个会话，重复 add 是 no-op，所以幂等。
+async function addConversationToAssignedTag(conversation) {
+  if (!juggle?.addConversationsToTag) return false
+  const payload = buildTicketTagPayload(ASSIGNED_TAG_ID, conversation)
+  if (!payload) return false
+  try {
+    await juggle.addConversationsToTag(payload)
+    applyTicketTagChange('add', { id: ASSIGNED_TAG_ID, conversations: payload.conversations })
+    return true
+  } catch (e) {
+    console.warn('[im] addConversationToAssignedTag failed', e)
+    return false
+  }
+}
+async function removeConversationFromAssignedTag(conversation) {
+  if (!juggle?.removeConversationsFromTag) return false
+  const payload = buildTicketTagPayload(ASSIGNED_TAG_ID, conversation)
+  if (!payload) return false
+  try {
+    await juggle.removeConversationsFromTag(payload)
+    applyTicketTagChange('remove', { id: ASSIGNED_TAG_ID, conversations: payload.conversations })
+    return true
+  } catch (e) {
+    console.warn('[im] removeConversationFromAssignedTag failed', e)
+    return false
+  }
+}
+
+// 给"我"打 / 摘 my_ticket tag。和 assigned 的实现共用一个 payload 构造函数。
+// 注意：my_ticket 是 per-user 的 — 不同账号登录时 SDK 各自维护各自的 tag 成员。
+async function addConversationToMyTicketTag(conversation) {
+  if (!juggle?.addConversationsToTag) return false
+  const payload = buildTicketTagPayload(MY_TICKET_TAG_ID, conversation)
+  if (!payload) return false
+  try {
+    await juggle.addConversationsToTag(payload)
+    applyTicketTagChange('add', { id: MY_TICKET_TAG_ID, conversations: payload.conversations })
+    return true
+  } catch (e) {
+    console.warn('[im] addConversationToMyTicketTag failed', e)
+    return false
+  }
+}
+async function removeConversationFromMyTicketTag(conversation) {
+  if (!juggle?.removeConversationsFromTag) return false
+  const payload = buildTicketTagPayload(MY_TICKET_TAG_ID, conversation)
+  if (!payload) return false
+  try {
+    await juggle.removeConversationsFromTag(payload)
+    applyTicketTagChange('remove', { id: MY_TICKET_TAG_ID, conversations: payload.conversations })
+    return true
+  } catch (e) {
+    console.warn('[im] removeConversationFromMyTicketTag failed', e)
+    return false
+  }
+}
+
+// 构造 add/remove 助手共用的 payload。和 buildTakeoverTagPayload 同形，但
+// 接受 tag id 参数，避开重复代码。返回 null 表示输入不合法，调用方需要早退。
+function buildTicketTagPayload(tagId, conversation) {
+  if (!conversation) return null
+  const conversationId = conversation.conversationId || conversation.id
+  if (conversationId === undefined || conversationId === null) return null
+  if (conversation.conversationType === undefined || conversation.conversationType === null) return null
+  return {
+    id: tagId,
+    conversations: [{
+      conversationType: conversation.conversationType,
+      conversationId
+    }]
+  }
+}
 
 function buildTakeoverTagPayload(conversation) {
   if (!conversation) return null
@@ -441,6 +588,16 @@ export default {
   addConversationToTakeoverTag,
   removeConversationFromTakeoverTag,
   fetchConversationTags,
+  // Ticket tag helpers. assigned / my_ticket 是工单认领流程用的两个会话 tag。
+  ASSIGNED_TAG_ID,
+  MY_TICKET_TAG_ID,
+  isInAssignedTag,
+  isInMyTicketTag,
+  syncTicketTagsFromList,
+  addConversationToAssignedTag,
+  removeConversationFromAssignedTag,
+  addConversationToMyTicketTag,
+  removeConversationFromMyTicketTag,
   // 响应式连接状态 — 用于 UI 展示「连接中 / 已连接」之类的指示
   connectionState,
   Event,

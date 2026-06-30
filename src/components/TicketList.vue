@@ -11,7 +11,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['select', 'filterChange'])
+const emit = defineEmits(['select'])
 
 const tickets = ref([])
 const loading = ref(false)
@@ -84,69 +84,46 @@ onMounted(() => {
   fetchTickets()
 })
 
-const filters = [
-  { key: 'all', label: '我的' },
-  { key: 'unassigned', label: '未分配' }
-]
-
-function handleFilter(key) {
-  emit('filterChange', key)
-}
-
 defineExpose({ refresh: fetchTickets })
 </script>
 
 <template>
-  <aside class="tyn-sidebar">
-    <div class="tyn-sidebar__filters">
-      <button
-        v-for="f in filters"
-        :key="f.key"
-        class="tyn-sidebar__filter"
-        :class="{ active: filter === f.key }"
-        @click="handleFilter(f.key)"
-      >
-        {{ f.label }}
-      </button>
-    </div>
+  <div class="tyn-sidebar__convos">
+    <!-- Loading -->
+    <div v-if="loading" class="tyn-sidebar__empty">加载中…</div>
 
-    <div class="tyn-sidebar__convos">
-      <!-- Loading -->
-      <div v-if="loading" class="tyn-sidebar__empty">加载中…</div>
+    <!-- Error -->
+    <div v-else-if="error" class="tyn-sidebar__empty">{{ error }}</div>
 
-      <!-- Error -->
-      <div v-else-if="error" class="tyn-sidebar__empty">{{ error }}</div>
+    <!-- Empty -->
+    <div v-else-if="tickets.length === 0" class="tyn-sidebar__empty">没有待分配工单</div>
 
-      <!-- Empty -->
-      <div v-else-if="tickets.length === 0" class="tyn-sidebar__empty">没有待分配工单</div>
-
-      <!-- Ticket list -->
-      <div
-        v-for="ticket in tickets"
-        :key="ticket.ticket_id"
-        class="tyn-convo-item"
-        @click="openDetail(ticket)"
-      >
-        <Avatar
-          class="tyn-convo-item__avatar"
-          :name="ticket.customer?.nickname || '访客'"
-          :avatar="ticket.customer?.avatar"
-          size="md"
-        />
-        <div class="tyn-convo-item__info">
-          <div class="tyn-convo-item__name">
-            <span class="tyn-convo-item__name-text">{{ ticket.customer?.nickname || '匿名访客' }}</span>
-            <span class="tyn-convo-item__time">{{ formatTime(ticket.created_time) }}</span>
-          </div>
-          <div class="tyn-convo-item__preview">
-            <span class="ticket-list__channel">{{ channelLabel(ticket.channel_id) }}</span>
-            <span class="ticket-list__id">#{{ ticket.ticket_id?.slice(-8) }}</span>
-          </div>
+    <!-- Ticket list -->
+    <div
+      v-for="ticket in tickets"
+      :key="ticket.ticket_id"
+      class="tyn-convo-item"
+      @click="openDetail(ticket)"
+    >
+      <Avatar
+        class="tyn-convo-item__avatar"
+        :name="ticket.customer?.nickname || '访客'"
+        :avatar="ticket.customer?.avatar"
+        size="md"
+      />
+      <div class="tyn-convo-item__info">
+        <div class="tyn-convo-item__name">
+          <span class="tyn-convo-item__name-text">{{ ticket.customer?.nickname || '匿名访客' }}</span>
+          <span class="tyn-convo-item__time">{{ formatTime(ticket.created_time) }}</span>
         </div>
-        <!-- <div class="ticket-list__status">待处理</div> -->
+        <div class="tyn-convo-item__preview">
+          <span class="ticket-list__channel">{{ channelLabel(ticket.channel_id) }}</span>
+          <span class="ticket-list__id">#{{ ticket.ticket_id?.slice(-8) }}</span>
+        </div>
       </div>
+      <!-- <div class="ticket-list__status">待处理</div> -->
     </div>
-  </aside>
+  </div>
 </template>
 
 <style scoped>

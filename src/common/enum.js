@@ -75,3 +75,22 @@ export const MESSAGE_BURN_TYPE = {
   WEEK: '1w',
   OFF: 'off'
 }
+
+// 会话 tag id（业务侧定义的 IM SDK 会话分组）。
+//   assigned  — 工单被认领后，对应会话打上这个 tag（全员视角）
+//   my_ticket — 当前认领人额外打上这个 tag（用于"我的"过滤）
+// 这些 id 是和 IM 服务端约定好的固定字符串，不要随意改。
+export const CONVERSATION_TAG_ID = {
+  ASSIGNED: 'assigned',
+  MY_TICKET: 'my_ticket'
+}
+
+// 左侧会话分类。和 `filter` ref 的取值一一对应。
+//   mine       — 我的（tag = my_ticket）
+//   unassigned — 未分配的（tag != assigned）
+//   all        — 全部（不筛 tag）
+export const SESSION_FILTER = {
+  MINE: 'mine',
+  UNASSIGNED: 'unassigned',
+  ALL: 'all'
+}

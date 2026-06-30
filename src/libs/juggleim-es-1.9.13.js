@@ -5441,6 +5441,10 @@ const $root = ($protobuf.roots["default"] || ($protobuf.roots["default"] = new $
           tag: {
             type: "string",
             id: 7
+          },
+          exceptTag: {
+            type: "string",
+            id: 8
           }
         }
       },
@@ -8738,7 +8742,8 @@ async function getQueryBody({
       time,
       order,
       conversationType,
-      tag
+      tag,
+      exceptTag
     } = data;
     targetId = userId;
     let codec = $root.lookup('codec.QryConversationsReq');
@@ -8755,6 +8760,11 @@ async function getQueryBody({
     if (tag) {
       utils.extend(content, {
         tag
+      });
+    }
+    if (exceptTag) {
+      utils.extend(content, {
+        exceptTag
       });
     }
     let message = codec.create(content);
@@ -16287,6 +16297,8 @@ function Message$1 (io, emitter, logger) {
       let {
         conversationType,
         conversationId,
+        conversationTitle,
+        conversationPortrait,
         messages,
         previewList,
         title,
@@ -16327,6 +16339,8 @@ function Message$1 (io, emitter, logger) {
       let msg = {
         conversationId,
         conversationType,
+        conversationTitle,
+        conversationPortrait,
         name: MESSAGE_TYPE.MERGE,
         mergeMsg: mergeMsg,
         lifeTime,
@@ -18464,8 +18478,11 @@ function Conversation ($conversation, {
 function Message ($message, {
   webAgent
 }) {
-  let funcs = ['sendMessage', 'updateMessageAttr', 'removeMessages', 'sendMassMessage', 'getMessagesByIds', 'clearMessage', 'recallMessage', 'readMessage', 'getMessageReadDetails', 'updateMessage', 'insertMessage', 'getMentionMessages', 'getFileToken', 'sendFileMessage', 'sendImageMessage', 'sendVoiceMessage', 'sendVideoMessage', 'sendMergeMessage', 'getMergeMessages', 'setSearchContent', 'addMessageReaction', 'removeMessageReaction', 'getFirstUnreadMessage'];
+  let funcs = ['sendMessage', 'updateMessageAttr', 'removeMessages', 'sendMassMessage', 'getMessagesByIds', 'clearMessage', 'readMessage', 'getMessageReadDetails', 'updateMessage', 'insertMessage', 'getMentionMessages', 'getFileToken', 'sendFileMessage', 'sendImageMessage', 'sendVoiceMessage', 'sendVideoMessage', 'sendMergeMessage', 'getMergeMessages', 'setSearchContent', 'addMessageReaction', 'removeMessageReaction', 'getFirstUnreadMessage'];
   let invokes = common.formatProvider(funcs, $message);
+  invokes.recallMessage = message => {
+    return webAgent.recallMessage(message);
+  };
   invokes.subscribeMessage = conversation => {
     return webAgent.subscribeMessage(conversation);
   };
@@ -18654,7 +18671,7 @@ function Socket ($socket, {
   let funcs = ['connect', 'disconnect', 'getDevice', 'isConnected', 'isNeedConnect', 'getCurrentUser', 'setConnectParams', 'getUserStatus', 'subUserStatus'];
   let invokes = common.formatProvider(funcs, $socket);
   invokes.setServerUrlProider = callback => {
-    webAgent.setServerUrlProider(callback);
+    return webAgent.setServerUrlProider(callback);
   };
   return invokes;
 }

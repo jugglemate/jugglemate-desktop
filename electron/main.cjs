@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron')
+const { app, BrowserWindow, ipcMain, shell } = require('electron')
 const path = require('path')
 const http = require('http')
 const fs = require('fs')
@@ -24,6 +24,23 @@ ipcMain.on('window-close', () => {
 
 ipcMain.handle('window-is-maximized', () => {
   return mainWindow?.isMaximized() ?? false
+})
+
+// ====================== 外部链接 ======================
+// 渲染进程请求在系统默认浏览器中打开 URL（管理后台、帮助文档等）。
+// 用主进程的 shell.openExternal 而不是 window.open，是因为 window.open
+// 在 Electron 里会开成新的 BrowserWindow 而不是系统浏览器。
+
+ipcMain.handle('open-external', async (_event, url) => {
+  if (typeof url !== 'string' || !url) {
+    return { ok: false, error: 'invalid url' }
+  }
+  // 兜底：只放 http(s)，避免被滥用去打开 file:// 等本地协议
+  if (!/^https?:\/\//i.test(url)) {
+    return { ok: false, error: 'only http(s) urls are allowed' }
+  }
+  await shell.openExternal(url)
+  return { ok: true }
 })
 
 // ====================== 静态文件服务器（生产模式） ======================

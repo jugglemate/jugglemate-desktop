@@ -1,4 +1,8 @@
 <script setup>
+import { computed } from 'vue'
+import { CONFIG, getApiBaseUrl } from '../config'
+import toast from '../common/toast'
+
 const props = defineProps({
   show: {
     type: Boolean,
@@ -11,19 +15,48 @@ const props = defineProps({
   userId: {
     type: String,
     default: 'user_12345678'
+  },
+  // Server-defined role. `1` = admin (sees the "管理后台" entry point).
+  userRole: {
+    type: [Number, String],
+    default: null
   }
 })
 
 const emit = defineEmits(['close', 'logout'])
 
-const menuItems = [
-  { label: '通用设置', icon: 'settings' },
-  { label: '我的收藏', icon: 'star' },
-  { label: '我的二维码', icon: 'qrcode' },
-  { label: '账号管理', icon: 'account' },
-  { label: '用户协议', icon: 'doc' },
-  { label: '隐私协议', icon: 'shield' }
-]
+const isAdmin = computed(() => Number(props.userRole) === 1)
+
+// 管理员专属：跳转到外部管理后台。
+// 主机地址跟随用户当前配置的 API server（而不是写死线上 IP），
+// 切到测试环境时管理后台 URL 也跟着切；appkey 同步走 config 里的 APP_KEY。
+const adminConsoleUrl = computed(() => `http://${getApiBaseUrl()}/jmateconsole?appkey=${CONFIG.APP_KEY}`)
+
+async function openAdminConsole() {
+  const url = adminConsoleUrl.value
+  // Electron 桌面端：走主进程 shell.openExternal，由系统默认浏览器打开 URL。
+  // 普通浏览器（开发态 vite / 直接预览）下没有 electronAPI，降级到 window.open。
+  if (window.electronAPI?.openExternal) {
+    try {
+      await window.electronAPI.openExternal(url)
+      return
+    } catch (err) {
+      // 常见原因：main.cjs 改了但没重启 Electron，主进程没有 'open-external' handler。
+      console.warn('[UserDrawer] openExternal 失败，fallback 到 a.click()：', err)
+      // toast.error('外部链接桥接未生效，请重启应用后再试')
+    }
+  }
+  // 兜底：动态创建 <a target="_blank"> 并触发点击。
+  // 在 web 端这会开新标签页；在 Electron 端如果 setWindowOpenHandler 没配，
+  // 也会尽量走系统浏览器（比直接 window.open 行为更可控）。
+  const a = document.createElement('a')
+  a.href = url
+  a.target = '_blank'
+  a.rel = 'noopener noreferrer'
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+}
 </script>
 
 <template>
@@ -56,7 +89,26 @@ const menuItems = [
 
           <div class="user-drawer__divider"></div>
 
-          <div class="user-drawer__divider"></div>
+          <!-- 菜单区：当前只对管理员展示"管理后台"入口；非管理员整块不渲染。 -->
+          <div v-if="isAdmin" class="user-drawer__menu">
+            <!-- 管理员专属入口：跳转到 jmateconsole -->
+            <button
+              type="button"
+              class="user-drawer__menu-item user-drawer__menu-item--admin"
+              @click="openAdminConsole"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2l3 7h7l-5.5 4 2 7L12 16l-6.5 4 2-7L2 9h7l3-7z"/>
+              </svg>
+              <span>管理后台</span>
+              <svg class="user-drawer__arrow" width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M9 3h2v2h-2zM9 7h2v6h-2zM5 9h6v2H5z" fill="currentColor"/>
+                <path d="M14 3l-1-1-7 7 1 1 7-7z" fill="currentColor"/>
+              </svg>
+            </button>
+          </div>
+
+          <div v-if="isAdmin" class="user-drawer__divider"></div>
 
           <!-- 退出登录 -->
           <div class="user-drawer__footer">
@@ -184,6 +236,19 @@ const menuItems = [
 
 .user-drawer__menu-item:hover {
   background: #F9FAFB;
+}
+
+.user-drawer__menu-item--admin {
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  color: #2563EB;
+  font-weight: 500;
+}
+
+.user-drawer__menu-item--admin:hover {
+  background: #EFF6FF;
 }
 
 .user-drawer__arrow {

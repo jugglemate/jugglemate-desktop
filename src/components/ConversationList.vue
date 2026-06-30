@@ -1,7 +1,7 @@
 <script setup>
-import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import im from '../common/im'
-import { MSG_NAME, TYPING_STATUS } from '../common/enum'
+import { MSG_NAME, TYPING_STATUS, SESSION_FILTER, CONVERSATION_TAG_ID } from '../common/enum'
 import ConversationMenu from './ConversationMenu.vue'
 import Avatar from './Avatar.vue'
 
@@ -16,7 +16,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['select', 'filterChange', 'conversationOp', 'suggestionReceived'])
+const emit = defineEmits(['select', 'conversationOp', 'suggestionReceived'])
 
 // ---------------------------------------------------------------------------
 // IM integration (mirrors snailchat's conversation-list.vue flow)
@@ -365,14 +365,28 @@ function onConversationRemoved({ conversations = [] } = {}) {
 }
 
 // --- Connect lifecycle ----------------------------------------------------
+// 根据当前 filter 计算要传给 juggle.getConversations 的 tag 参数。
+//   mine       — tag = my_ticket（精确匹配）
+//   unassigned — tag = '!assigned'（反向匹配，需要服务端支持；
+//                 如果服务端只支持精确匹配，下面的 reconcile 兜底会再次过滤）
+//   all        — 不传 tag，拉全部
+// SDK 的 QryConversationsReq 协议里 tag 是 string，falsy 时不序列化到请求里。
+function buildTagParamForFilter(filter) {
+  if (filter === SESSION_FILTER.MINE) return CONVERSATION_TAG_ID.MY_TICKET
+  if (filter === SESSION_FILTER.UNASSIGNED) return '!' + CONVERSATION_TAG_ID.ASSIGNED
+  // SESSION_FILTER.ALL 或未知值 — 不传 tag
+  return undefined
+}
+
 async function fetchConversations() {
   if (!juggle?.getConversations) {
     console.warn('[ConversationList] fetchConversations skipped — juggle.getConversations not available')
     return
   }
+  const tag = buildTagParamForFilter(props.filter)
   try {
-    console.log('[ConversationList] fetchConversations — calling juggle.getConversations()')
-    const result = await juggle.getConversations({})
+    console.log('[ConversationList] fetchConversations — calling juggle.getConversations()', { filter: props.filter, tag })
+    const result = await juggle.getConversations(tag ? { tag } : {})
     console.log('[ConversationList] getConversations result:', { 
       count: result?.conversations?.length || 0,
       hasConversations: !!result?.conversations
@@ -383,8 +397,21 @@ async function fetchConversations() {
     // isTakeover flag on first paint. This also reconciles state on a
     // fresh login (the SDK returns existing tag memberships).
     im.syncTakeoverTagFromList(list)
+    // assigned / my_ticket 本地 set 同步。和 takeover 一样的 reconcile 模式：
+    // 先清空再用 server 视图重写，多设备、SDK 推送都能自然覆盖。
+    im.syncTicketTagsFromList(list)
+
+    // 前端兜底过滤：unassigned 要求 tag != assigned。如果服务端支持
+    // tag='!assigned' 的反向查询，list 里已经只剩未分配的；否则这里再
+    // 按本地同步出来的 assignedTagConversations set 过滤一次。mine/all
+    // 不需要这个兜底 — mine 是精确匹配、all 是不筛选。
+    let filteredList = list
+    if (props.filter === SESSION_FILTER.UNASSIGNED) {
+      filteredList = list.filter((c) => !im.isInAssignedTag(c))
+    }
+
     imConversations.splice(0, imConversations.length,
-      ...list.filter(c => c.conversationId !== 'agentMsgBot').map(mapImConversation))
+      ...filteredList.filter(c => c.conversationId !== 'agentMsgBot').map(mapImConversation))
     imReady.value = true
     console.log('[ConversationList] Conversations loaded: total', imConversations.length)
   } catch (e) {
@@ -398,6 +425,18 @@ function onStateChanged({ state }) {
     fetchConversations()
   }
 }
+
+// 切 tab 时要重新拉会话列表。filter 是 prop，父组件（MainView）改
+// sidebarFilters 的 key 时这里会拿到新值。否则会一直显示上一 tab 的结果。
+// 没连接就不拉（等 STATE_CHANGED 再拉）。
+// 切之前先清空本地列表，避免用户看到上一 tab 的内容短暂残留。
+watch(() => props.filter, (val) => {
+  console.log('[ConversationList] filter changed →', val)
+  imConversations.splice(0, imConversations.length)
+  if (juggle?.isConnected && juggle.isConnected()) {
+    fetchConversations()
+  }
+})
 
 onMounted(() => {
   // juggle 由 main.js 入口的 im.init() 保证已经初始化好（im.init() 是幂等的）。
@@ -438,11 +477,6 @@ onBeforeUnmount(() => {
 
 // Re-fetch if filter changes are observed to be useful? No — filter is
 // client-side, no need to re-fetch.
-
-const filters = [
-  { key: 'all', label: '我的' },
-  { key: 'unassigned', label: '未分配' }
-]
 
 // Right-click state for the conversation list menu.
 const menuState = ref({ show: false, x: 0, y: 0, conversation: null })
@@ -497,13 +531,11 @@ const displayConversations = computed(() => {
 })
 
 function isVisible(convo) {
-  if (props.filter === 'all') return true
-  if (props.filter === 'unassigned') return false // ticket list handled by TicketList component
+  // mine / unassigned / all 三个分类已经在 fetchConversations 里通过
+  // getConversations 的 tag 参数 + 前端兜底过滤处理掉了，本组件拿到的
+  // imConversations 已经是过滤后的结果，不需要再判断。只有 takeover 是
+  // 留在本地做的（"接管中" 跟会话分类是两条独立的轴）。
   if (props.filter === 'takeover') {
-    // Read through the reactive tag set in im.js rather than the cached
-    // `isTakeover` field on the row. The cached field is set at mapping
-    // time, so it would miss takeover transitions that happen while the
-    // list is mounted (a托管 toggle, a switch from another device, etc.).
     return im.isInTakeoverTag(convo)
   }
   return true
@@ -520,13 +552,6 @@ const topConversations = computed(() => {
   return []
 })
 
-function handleFilter(key) {
-  if (key === 'takeover') {
-    void im.fetchConversationTags()
-  }
-  emit('filterChange', key)
-}
-
 function handleSelect(convo) {
   void clearUnreadCount(convo)
   emit('select', convo)
@@ -535,27 +560,7 @@ function handleSelect(convo) {
 </script>
 
 <template>
-  <aside class="tyn-sidebar">
-    <!-- <div class="tyn-sidebar__header">
-      <input
-        type="text"
-        class="tyn-sidebar__search"
-        placeholder="搜索会话或联系人..."
-      />
-    </div> -->
-
-    <div class="tyn-sidebar__filters">
-      <button
-        v-for="f in filters"
-        :key="f.key"
-        class="tyn-sidebar__filter"
-        :class="{ active: filter === f.key }"
-        @click="handleFilter(f.key)"
-      >
-        {{ f.label }}
-      </button>
-    </div>
-
+  <div class="tyn-sidebar__convos">
     <!-- Pinned / top conversations (IM only) -->
     <div v-if="topConversations.length" class="tyn-sidebar__tops">
       <div
@@ -576,8 +581,6 @@ function handleSelect(convo) {
       </div>
     </div>
 
-    <!-- Main conversation list -->
-    <div class="tyn-sidebar__convos">
       <div
         v-for="convo in visibleConversations"
         :key="convo.id"
@@ -654,7 +657,6 @@ function handleSelect(convo) {
       @select="onMenuSelect"
       @close="closeMenu"
     />
-  </aside>
 </template>
 
 <style scoped>

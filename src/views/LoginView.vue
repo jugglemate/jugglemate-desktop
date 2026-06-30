@@ -233,11 +233,6 @@ async function handleLogin() {
             <span>{{ isLoading ? '登录中...' : '登录' }}</span>
           </button>
         </form>
-
-        <div class="login-signup-cta">
-          <span class="login-signup-cta__text">还没有账号？</span>
-          <router-link to="/register" class="login-signup-cta__link">立即注册</router-link>
-        </div>
       </div>
     </main>
 
