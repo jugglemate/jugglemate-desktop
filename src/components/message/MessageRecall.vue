@@ -48,9 +48,9 @@ void _im
   align-self: center;
   padding: 4px 12px;
   font-size: 11px;
-  color: var(--text-tertiary);
-  background: var(--bg-elevated);
-  border-radius: var(--radius-sm);
+  color: var(--text-3);
+  background: var(var(--bg));
+  border-radius: var(--r-sm);
   margin: 6px 0;
 }
 </style>

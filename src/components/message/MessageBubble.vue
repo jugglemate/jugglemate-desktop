@@ -310,7 +310,7 @@ function onContext(e) {
 .jm-msg__bubble--no-bg {
   background: transparent;
   padding: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--r);
   border: none;
 }
 
@@ -323,7 +323,7 @@ function onContext(e) {
   background: transparent;
   padding: 0;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: var(--r);
   font-size: inherit;
   line-height: 0;
   word-break: normal;
@@ -351,16 +351,16 @@ function onContext(e) {
   left: 0;
   bottom: 0;
   height: 3px;
-  background: var(--accent);
-  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
-  transition: width var(--transition-fast);
+  background: var(--primary);
+  border-radius: 0 0 var(--r-lg) var(--r-lg);
+  transition: width var(--t-fast);
 }
 
 .jm-msg__progress-label {
   position: relative;
   z-index: 1;
   font-size: 11px;
-  color: var(--text-primary);
+  color: var(--text-1);
   font-variant-numeric: tabular-nums;
 }
 
@@ -380,7 +380,7 @@ function onContext(e) {
   width: 10px;
   height: 10px;
   border: 1.5px solid oklch(0.7 0.04 260);
-  border-top-color: var(--text-primary);
+  border-top-color: var(--text-1);
   animation: jm-spin 0.8s linear infinite;
   background: transparent;
 }
@@ -407,33 +407,33 @@ function onContext(e) {
 
 .jm-msg__readring-bg {
   fill: none;
-  stroke: var(--border-subtle);
+  stroke: var(--border-soft);
   stroke-width: 4;
 }
 
 .jm-msg__readring-fg {
   fill: none;
-  stroke: var(--accent);
+  stroke: var(--primary);
   stroke-width: 4;
   stroke-linecap: round;
-  transition: stroke-dasharray var(--transition-smooth);
+  transition: stroke-dasharray var(--t);
 }
 
 .jm-msg__resend {
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--border);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--text-2);
   font-size: 11px;
   padding: 2px 8px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--r-sm);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: all var(--t-fast);
 }
 
 .jm-msg__resend:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-  border-color: var(--text-tertiary);
+  background: var(--primary-hover);
+  color: var(--text-1);
+  border-color: var(--text-3);
 }
 
 .jm-msg__meta {
@@ -459,11 +459,11 @@ function onContext(e) {
 
 .jm-msg__tick {
   font-size: 11px;
-  color: var(--text-tertiary);
+  color: var(--text-3);
 }
 
 .jm-msg__tick.is-read {
-  color: var(--accent);
+  color: var(--primary);
 }
 
 .jm-msg__tick--double {

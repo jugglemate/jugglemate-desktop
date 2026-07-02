@@ -146,9 +146,9 @@ watch(() => props.show, (val) => {
   max-height: 70vh;
   display: flex;
   flex-direction: column;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
+  background: var(var(--bg));
+  border: 1px solid var(--border);
+  border-radius: var(--r);
   box-shadow: var(--shadow-lg);
   overflow: hidden;
 }
@@ -158,48 +158,48 @@ watch(() => props.show, (val) => {
   align-items: center;
   justify-content: space-between;
   padding: 14px 16px;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-soft);
 }
 
 .jm-transfer-dialog__title {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text-1);
 }
 
 .jm-transfer-dialog__close {
   background: transparent;
   border: none;
-  color: var(--text-tertiary);
+  color: var(--text-3);
   cursor: pointer;
   font-size: 14px;
   padding: 4px;
 }
 
 .jm-transfer-dialog__close:hover {
-  color: var(--text-primary);
+  color: var(--text-1);
 }
 
 .jm-transfer-dialog__search {
   padding: 10px 16px;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-soft);
 }
 
 .jm-transfer-dialog__input {
   width: 100%;
-  background: var(--bg-root);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-sm);
   padding: 8px 10px;
-  color: var(--text-primary);
+  color: var(--text-1);
   font-size: 13px;
   font-family: var(--font-sans);
   outline: none;
 }
 
 .jm-transfer-dialog__input:focus {
-  border-color: var(--accent-dim);
+  border-color: var(--primary-active);
 }
 
 .jm-transfer-dialog__list {
@@ -216,36 +216,36 @@ watch(() => props.show, (val) => {
   padding: 8px 10px;
   background: transparent;
   border: none;
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
+  border-radius: var(--r-sm);
+  color: var(--text-1);
   font-family: var(--font-sans);
   text-align: left;
   cursor: pointer;
-  transition: background var(--transition-fast);
+  transition: background var(--t-fast);
 }
 
 .jm-transfer-dialog__item:hover,
 .jm-transfer-dialog__item.is-selected {
-  background: var(--bg-hover);
+  background: var(--primary-hover);
 }
 
 .jm-transfer-dialog__check {
   width: 18px;
   height: 18px;
   border-radius: 4px;
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 11px;
-  color: var(--bg-root);
+  color: var(--bg-soft);
   flex-shrink: 0;
 }
 
 .jm-transfer-dialog__check.is-on {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--bg-root);
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--bg-soft);
 }
 
 .jm-transfer-dialog__info {
@@ -255,7 +255,7 @@ watch(() => props.show, (val) => {
 
 .jm-transfer-dialog__name {
   font-size: 13px;
-  color: var(--text-primary);
+  color: var(--text-1);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -263,13 +263,13 @@ watch(() => props.show, (val) => {
 
 .jm-transfer-dialog__hint {
   font-size: 11px;
-  color: var(--text-tertiary);
+  color: var(--text-3);
 }
 
 .jm-transfer-dialog__empty {
   padding: 24px 12px;
   text-align: center;
-  color: var(--text-tertiary);
+  color: var(--text-3);
   font-size: 12px;
 }
 
@@ -278,33 +278,33 @@ watch(() => props.show, (val) => {
   gap: 8px;
   justify-content: flex-end;
   padding: 12px 16px;
-  border-top: 1px solid var(--border-subtle);
+  border-top: 1px solid var(--border-soft);
 }
 
 .jm-btn {
   padding: 6px 14px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--r-sm);
   font-size: 12px;
   font-family: var(--font-sans);
   cursor: pointer;
   border: 1px solid transparent;
-  transition: all var(--transition-fast);
+  transition: all var(--t-fast);
 }
 
 .jm-btn--outline {
   background: transparent;
-  border-color: var(--border-default);
-  color: var(--text-secondary);
+  border-color: var(--border);
+  color: var(--text-2);
 }
 
 .jm-btn--outline:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
+  background: var(--primary-hover);
+  color: var(--text-1);
 }
 
 .jm-btn--primary {
-  background: var(--accent);
-  color: var(--bg-root);
+  background: var(--primary);
+  color: var(--bg-soft);
 }
 
 .jm-btn--primary:hover:not(:disabled) {

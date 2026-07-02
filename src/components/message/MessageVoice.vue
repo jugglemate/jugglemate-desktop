@@ -71,19 +71,19 @@ function onEnded() {
   align-items: center;
   gap: 10px;
   padding: 8px 14px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
+  background: var(var(--bg));
+  border: 1px solid var(--border-soft);
   border-radius: 18px;
   cursor: pointer;
   font-family: var(--font-sans);
-  color: var(--text-primary);
-  transition: all var(--transition-fast);
+  color: var(--text-1);
+  transition: all var(--t-fast);
   min-width: 140px;
 }
 
 .jm-msg-voice:hover {
-  background: var(--bg-hover);
-  border-color: var(--accent-dim);
+  background: var(--primary-hover);
+  border-color: var(--primary-active);
 }
 
 .jm-msg-voice__icon {
@@ -93,8 +93,8 @@ function onEnded() {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: var(--accent);
-  color: var(--bg-root);
+  background: var(--primary);
+  color: var(--bg-soft);
   font-size: 10px;
   font-weight: 700;
   flex-shrink: 0;
@@ -114,7 +114,7 @@ function onEnded() {
 .jm-msg-voice__waveform span {
   display: block;
   width: 2px;
-  background: var(--text-secondary);
+  background: var(--text-2);
   border-radius: 1px;
   animation: jm-wave 1.2s ease-in-out infinite;
 }
@@ -134,7 +134,7 @@ function onEnded() {
 
 .jm-msg-voice__duration {
   font-size: 11px;
-  color: var(--text-tertiary);
+  color: var(--text-3);
   font-variant-numeric: tabular-nums;
 }
 

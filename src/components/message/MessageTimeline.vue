@@ -36,7 +36,7 @@ const label = getTimeSeparatorText(props.message?.sentTime)
   right: 0;
   top: 50%;
   height: 1px;
-  background: var(--border-subtle);
+  background: var(--border-soft);
   z-index: 0;
 } */
 
@@ -44,9 +44,9 @@ const label = getTimeSeparatorText(props.message?.sentTime)
   position: relative;
   z-index: 1;
   padding: 2px 10px;
-  /* background: var(--bg-surface); */
-  /* border-radius: var(--radius-sm); */
+  /* background: var(--bg); */
+  /* border-radius: var(--r-sm); */
   font-size: 11px;
-  color: var(--text-tertiary);
+  color: var(--text-3);
 }
 </style>

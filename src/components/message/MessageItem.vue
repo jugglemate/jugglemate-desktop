@@ -155,7 +155,7 @@ function onPreview(payload) {
 .jm-msg__sender {
   font-size: 11px;
   font-weight: 600;
-  color: var(--accent);
+  color: var(--primary);
   margin-bottom: 4px;
   padding-left: 4px;
 }

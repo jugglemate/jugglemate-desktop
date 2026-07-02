@@ -58,9 +58,9 @@ function pick(emoji) {
   align-items: center;
   gap: 2px;
   padding: 4px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
+  background: var(var(--bg));
+  border: 1px solid var(--border);
+  border-radius: var(--r);
   box-shadow: var(--shadow-lg);
   animation: jm-emojiIn 120ms ease-out;
 }
@@ -74,13 +74,13 @@ function pick(emoji) {
   font-size: 18px;
   background: transparent;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--r-sm);
   cursor: pointer;
-  transition: background var(--transition-fast);
+  transition: background var(--t-fast);
 }
 
 .jm-emoji-picker__btn:hover {
-  background: var(--bg-hover);
+  background: var(--primary-hover);
 }
 
 @keyframes jm-emojiIn {

@@ -37,11 +37,11 @@ const raw = computed(() => {
   align-items: center;
   gap: 6px;
   padding: 8px 12px;
-  border: 1px dashed var(--border-default);
-  border-radius: var(--radius-md);
+  border: 1px dashed var(--border);
+  border-radius: var(--r);
   font-size: 12px;
-  color: var(--text-tertiary);
-  background: var(--bg-root);
+  color: var(--text-3);
+  background: var(--bg-soft);
   max-width: 320px;
 }
 
@@ -52,8 +52,8 @@ const raw = computed(() => {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: var(--bg-elevated);
-  color: var(--text-secondary);
+  background: var(var(--bg));
+  color: var(--text-2);
   font-weight: 600;
   font-size: 11px;
 }

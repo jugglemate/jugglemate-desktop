@@ -11,6 +11,6 @@
 <style scoped>
 .agent-admin-page {
   padding: 24px;
-  color: var(--text-primary, #333);
+  color: var(--text-1, #333);
 }
 </style>

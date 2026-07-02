@@ -1528,7 +1528,7 @@ function onCancelReply() {
 .jm-messages__end {
   text-align: center;
   font-size: 11px;
-  color: var(--text-tertiary);
+  color: var(--text-3);
   padding: 8px 0;
 }
 
@@ -1549,7 +1549,7 @@ function onCancelReply() {
 .tyn-ticket-header__title {
   font-weight: 600;
   font-size: 15px;
-  color: var(--text-primary, #333);
+  color: var(--text-1, #333);
   margin-bottom: 2px;
 }
 
@@ -1558,7 +1558,7 @@ function onCancelReply() {
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: var(--text-tertiary, #999);
+  color: var(--text-3, #999);
 }
 
 .tyn-ticket-header__status {
@@ -1710,7 +1710,7 @@ function onCancelReply() {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--text-tertiary, #999);
+  background: var(--text-3, #999);
   animation: dot-bounce 1.4s infinite ease-in-out both;
 }
 
@@ -1729,7 +1729,7 @@ function onCancelReply() {
 
 .jm-thinking-bubble__text {
   font-size: 13px;
-  color: var(--text-secondary, #666);
+  color: var(--text-2, #666);
 }
 
 .jm-thinking-bubble--timeout .jm-thinking-bubble__text {
@@ -1739,7 +1739,7 @@ function onCancelReply() {
 .jm-thinking-bubble__close {
   background: none;
   border: none;
-  color: var(--text-tertiary, #999);
+  color: var(--text-3, #999);
   cursor: pointer;
   font-size: 14px;
   line-height: 1;
@@ -1750,7 +1750,7 @@ function onCancelReply() {
 }
 
 .jm-thinking-bubble__close:hover {
-  color: var(--text-primary, #333);
+  color: var(--text-1, #333);
   background: rgba(0, 0, 0, 0.06);
 }
 

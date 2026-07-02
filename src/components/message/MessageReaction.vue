@@ -71,19 +71,19 @@ function onClick(reaction) {
   gap: 4px;
   padding: 2px 8px;
   border-radius: 12px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-secondary);
+  background: var(var(--bg));
+  border: 1px solid var(--border-soft);
+  color: var(--text-2);
   font-size: 11px;
   cursor: pointer;
   font-family: var(--font-sans);
-  transition: all var(--transition-fast);
+  transition: all var(--t-fast);
 }
 
 .jm-msg-reaction__pill:hover {
-  background: var(--bg-hover);
-  border-color: var(--accent-dim);
-  color: var(--text-primary);
+  background: var(--primary-hover);
+  border-color: var(--primary-active);
+  color: var(--text-1);
 }
 
 .jm-msg-reaction__emoji {
@@ -92,6 +92,6 @@ function onClick(reaction) {
 
 .jm-msg-reaction__count {
   font-variant-numeric: tabular-nums;
-  color: var(--text-tertiary);
+  color: var(--text-3);
 }
 </style>

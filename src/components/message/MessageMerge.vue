@@ -65,19 +65,19 @@ function onClick() {
   min-width: 240px;
   max-width: 320px;
   padding: 10px 12px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
+  background: var(var(--bg));
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r);
   text-align: left;
   cursor: pointer;
   font-family: var(--font-sans);
-  color: var(--text-primary);
-  transition: all var(--transition-fast);
+  color: var(--text-1);
+  transition: all var(--t-fast);
 }
 
 .jm-msg-merge:hover {
-  background: var(--bg-hover);
-  border-color: var(--accent-dim);
+  background: var(--primary-hover);
+  border-color: var(--primary-active);
 }
 
 .jm-msg-merge__title {
@@ -86,7 +86,7 @@ function onClick() {
   gap: 6px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text-1);
 }
 
 .jm-msg-merge__icon {
@@ -101,7 +101,7 @@ function onClick() {
   flex-direction: column;
   gap: 2px;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--text-2);
   max-height: 84px;
   overflow: hidden;
   position: relative;
@@ -114,12 +114,12 @@ function onClick() {
 }
 
 .jm-msg-merge__name {
-  color: var(--text-tertiary);
+  color: var(--text-3);
   margin-right: 2px;
 }
 
 .jm-msg-merge__more {
-  color: var(--text-tertiary);
+  color: var(--text-3);
   font-style: italic;
 }
 </style>

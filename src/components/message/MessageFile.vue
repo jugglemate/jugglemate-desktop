@@ -79,19 +79,19 @@ function onClick() {
   min-width: 220px;
   max-width: 320px;
   padding: 10px 12px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  color: var(--text-primary);
+  background: var(var(--bg));
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r);
+  color: var(--text-1);
   font-family: var(--font-sans);
   text-align: left;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: all var(--t-fast);
 }
 
 .jm-msg-file:hover {
-  background: var(--bg-hover);
-  border-color: var(--accent-dim);
+  background: var(--primary-hover);
+  border-color: var(--primary-active);
 }
 
 .jm-msg-file__icon {
@@ -101,8 +101,8 @@ function onClick() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-surface);
-  border-radius: var(--radius-sm);
+  background: var(--bg);
+  border-radius: var(--r-sm);
   flex-shrink: 0;
 }
 
@@ -117,7 +117,7 @@ function onClick() {
 .jm-msg-file__name {
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--text-1);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -125,11 +125,11 @@ function onClick() {
 
 .jm-msg-file__meta {
   font-size: 11px;
-  color: var(--text-tertiary);
+  color: var(--text-3);
 }
 
 .jm-msg-file__action {
-  color: var(--text-tertiary);
+  color: var(--text-3);
   font-size: 14px;
   flex-shrink: 0;
 }

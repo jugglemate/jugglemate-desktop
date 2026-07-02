@@ -98,7 +98,7 @@ onBeforeUnmount(() => {
   max-width: 90vw;
   max-height: 88vh;
   object-fit: contain;
-  border-radius: var(--radius-md);
+  border-radius: var(--r);
   box-shadow: var(--shadow-lg);
 }
 
@@ -117,7 +117,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--transition-fast);
+  transition: all var(--t-fast);
 }
 
 .jm-image-preview__close:hover {

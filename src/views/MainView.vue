@@ -801,7 +801,7 @@ function clearTakeoverForConv(conversationType, conversationId) {
             <div class="tyn-group-item__icon">👥</div>
             <div>
               <div style="font-weight: 500;">{{ g.name }}</div>
-              <div style="font-size: 11px; color: var(--text-tertiary);">{{ g.agentCount }} 个 Agent</div>
+              <div style="font-size: 11px; color: var(--text-3);">{{ g.agentCount }} 个 Agent</div>
             </div>
           </div>
         </template>

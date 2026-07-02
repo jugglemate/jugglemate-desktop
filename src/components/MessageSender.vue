@@ -170,8 +170,8 @@ function onFileChange(e) {
   border-top: 1px solid #F0F2F5;
   background: #FFFFFF;
   flex-shrink: 0;
-  border-bottom-left-radius: var(--radius-lg);
-  border-bottom-right-radius: var(--radius-lg);
+  border-bottom-left-radius: var(--r-lg);
+  border-bottom-right-radius: var(--r-lg);
 }
 
 .jm-sender__icon-btn {
@@ -181,7 +181,7 @@ function onFileChange(e) {
   background: transparent;
   border: 1px solid #E1E8F0;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: all var(--t-fast);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -217,7 +217,7 @@ function onFileChange(e) {
   outline: none;
   resize: none;
   overflow-y: auto;
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
 }
 
 .jm-sender__input:focus {
@@ -241,7 +241,7 @@ function onFileChange(e) {
   background: #6B95D1;
   border: none;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: all var(--t-fast);
   display: flex;
   align-items: center;
   justify-content: center;

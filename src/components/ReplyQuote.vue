@@ -60,14 +60,14 @@ const preview = computed(() => {
   align-items: stretch;
   gap: 8px;
   padding: 6px 20px 4px;
-  background: var(--bg-surface);
-  border-top: 1px solid var(--border-subtle);
+  background: var(--bg);
+  border-top: 1px solid var(--border-soft);
   font-family: var(--font-sans);
 }
 
 .jm-reply-quote__line {
   width: 3px;
-  background: var(--accent);
+  background: var(--primary);
   border-radius: 2px;
   flex-shrink: 0;
 }
@@ -83,13 +83,13 @@ const preview = computed(() => {
 
 .jm-reply-quote__label {
   font-size: 11px;
-  color: var(--accent);
+  color: var(--primary);
   font-weight: 600;
 }
 
 .jm-reply-quote__preview {
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--text-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -98,7 +98,7 @@ const preview = computed(() => {
 .jm-reply-quote__cancel {
   background: transparent;
   border: none;
-  color: var(--text-tertiary);
+  color: var(--text-3);
   font-size: 12px;
   cursor: pointer;
   padding: 0 4px;
@@ -106,6 +106,6 @@ const preview = computed(() => {
 }
 
 .jm-reply-quote__cancel:hover {
-  color: var(--text-primary);
+  color: var(--text-1);
 }
 </style>

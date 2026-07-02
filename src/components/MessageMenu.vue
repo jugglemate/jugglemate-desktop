@@ -112,13 +112,13 @@ function onSelect(item) {
   position: fixed;
   z-index: 1000;
   min-width: 160px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
+  background: var(var(--bg));
+  border: 1px solid var(--border);
+  border-radius: var(--r);
   box-shadow: var(--shadow-lg);
   padding: 4px;
   font-family: var(--font-sans);
-  color: var(--text-primary);
+  color: var(--text-1);
   animation: jm-menuIn 120ms ease-out;
 }
 
@@ -138,17 +138,17 @@ function onSelect(item) {
   padding: 8px 12px;
   background: transparent;
   border: none;
-  color: var(--text-primary);
+  color: var(--text-1);
   font-size: 13px;
   font-family: var(--font-sans);
   text-align: left;
   cursor: pointer;
-  border-radius: var(--radius-sm);
-  transition: background var(--transition-fast);
+  border-radius: var(--r-sm);
+  transition: background var(--t-fast);
 }
 
 .jm-msg-menu__item:hover {
-  background: var(--bg-hover);
+  background: var(--primary-hover);
 }
 
 .jm-msg-menu__item--danger {

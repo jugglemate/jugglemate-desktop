@@ -62,10 +62,10 @@ onBeforeUnmount(() => emitter.off(EVENT))
   min-width: 240px;
   max-width: 480px;
   padding: 10px 16px;
-  border-radius: var(--radius-md);
-  background: var(--bg-elevated);
-  color: var(--text-primary);
-  border: 1px solid var(--border-default);
+  border-radius: var(--r);
+  background: var(var(--bg));
+  color: var(--text-1);
+  border: 1px solid var(--border);
   box-shadow: var(--shadow-md);
   font-family: var(--font-sans);
   font-size: 13px;
@@ -86,7 +86,7 @@ onBeforeUnmount(() => emitter.off(EVENT))
 }
 
 .jm-toast--info {
-  border-color: var(--border-default);
+  border-color: var(--border);
 }
 
 @keyframes jm-toastIn {

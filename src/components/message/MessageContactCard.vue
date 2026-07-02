@@ -61,21 +61,21 @@ function initial(name) {
   min-width: 220px;
   max-width: 280px;
   padding: 10px 12px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
+  background: var(var(--bg));
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r);
 }
 
 .jm-msg-card__avatar {
   width: 36px;
   height: 36px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-surface);
+  border-radius: var(--r-sm);
+  background: var(--bg);
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text-1);
   overflow: hidden;
   flex-shrink: 0;
 }
@@ -94,7 +94,7 @@ function initial(name) {
 .jm-msg-card__name {
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--text-1);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -102,14 +102,14 @@ function initial(name) {
 
 .jm-msg-card__account {
   font-size: 11px;
-  color: var(--text-tertiary);
+  color: var(--text-3);
 }
 
 .jm-msg-card__hint {
   font-size: 10px;
-  color: var(--text-tertiary);
-  background: var(--bg-root);
-  border: 1px solid var(--border-subtle);
+  color: var(--text-3);
+  background: var(--bg-soft);
+  border: 1px solid var(--border-soft);
   padding: 2px 6px;
   border-radius: 4px;
   flex-shrink: 0;

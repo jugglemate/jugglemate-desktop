@@ -178,7 +178,7 @@ onUnmounted(() => { document.removeEventListener('click', onClickOutside) })
   height: calc(100vh - 20px);
   margin: 10px 10px 10px 0;
   background: #FFFFFF;
-  border-radius: var(--radius-md);
+  border-radius: var(--r);
   display: flex;
   flex-direction: column;
   overflow: visible;

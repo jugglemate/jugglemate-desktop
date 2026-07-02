@@ -48,7 +48,7 @@ void _im
 .jm-msg-text__updated {
   margin-left: 6px;
   font-size: 10px;
-  color: var(--text-tertiary);
+  color: var(--text-3);
   font-style: italic;
 }
 </style>

@@ -80,7 +80,7 @@ function togglePlay(e) {
 <style scoped>
 .jm-msg-video {
   position: relative;
-  border-radius: var(--radius-md);
+  border-radius: var(--r);
   overflow: hidden;
   background: black;
   cursor: pointer;
@@ -97,7 +97,7 @@ function togglePlay(e) {
 }
 
 .jm-msg-video__placeholder {
-  color: var(--text-tertiary);
+  color: var(--text-3);
   font-size: 12px;
 }
 
@@ -111,7 +111,7 @@ function togglePlay(e) {
   color: rgba(255, 255, 255, 0.9);
   background: rgba(0, 0, 0, 0.25);
   pointer-events: none;
-  transition: opacity var(--transition-fast);
+  transition: opacity var(--t-fast);
 }
 
 .jm-msg-video:hover .jm-msg-video__play {

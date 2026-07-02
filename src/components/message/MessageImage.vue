@@ -85,10 +85,10 @@ function onClick() {
 <style scoped>
 .jm-msg-image {
   position: relative;
-  border-radius: var(--radius-md);
+  border-radius: var(--r);
   overflow: hidden;
   cursor: zoom-in;
-  background: var(--bg-elevated);
+  background: var(var(--bg));
   /* The img's intrinsic aspect ratio drives the box. We use
      `inline-block` + `line-height: 0` so the container shrinks to fit
      and the bottom of the <img> sits flush with the container. */
@@ -104,8 +104,8 @@ function onClick() {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  background: var(--bg-root);
-  transition: transform var(--transition-smooth);
+  background: var(--bg-soft);
+  transition: transform var(--t);
 }
 
 .jm-msg-image:hover img {
@@ -118,7 +118,7 @@ function onClick() {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-tertiary);
+  color: var(--text-3);
   font-size: 12px;
 }
 </style>
