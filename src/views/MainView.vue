@@ -2,7 +2,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import NavSidebar from '../components/NavSidebar.vue'
-import ConversationList from '../components/ConversationList.vue'
+import Conversations from '../components/Conversations.vue'
 import TicketList from '../components/TicketList.vue'
 import ChatMain from '../components/ChatMain.vue'
 import AgentPanel from '../components/AgentPanel.vue'
@@ -33,8 +33,9 @@ const activeNav = ref('inbox')
 const showUserDrawer = ref(false)
 const currentUserId = computed(() => currentUser.value?.id || 'user_12345678')
 
-// 收件箱未读数 = "全部" tab 的未读数（filterCounts.all 在 IM 同步后更新）
-const inboxBadge = computed(() => filterCounts?.all || 0)
+// 收件箱未读数：当前 Conversations 组件不向上抛总数，暂占位为 0
+// TODO: Conversations 通过 defineExpose 或 emit('count-change', n) 上抛
+const inboxBadge = computed(() => 0)
 
 function handleNavChange(nav) {
   activeNav.value = nav
@@ -96,26 +97,6 @@ const currentView = ref('conversation') // 'conversation' | 'group'
 const currentConvoId = ref(null)
 const currentConversation = ref(null)
 const currentGroupId = ref(null)
-// `filter` 决定 tyn-sidebar__convos 区域显示什么：
-//   'mine'       — 我的（已分配给我的会话）
-//   'unassigned' — 未分配的（待分配工单，由 TicketList 渲染）
-//   'all'        — 所有的（所有会话）
-// tab UI 和容器统一在 MainView 维护，切换 filter 只换 convos 内容。
-const filter = ref('mine')
-
-// 各 filter 下的未读/待办数量。子组件可通过 defineExpose 暴露的 refresh()
-// 在挂载和数据变化时回填；目前先占位为 0，等数据流接通后展示真实数字。
-const filterCounts = reactive({ mine: 0, unassigned: 0, all: 0 })
-
-// 顶部 tab 过滤器配置。label 给 UI 看，key 跟 `filter` ref 的取值对齐。
-// SESSION_FILTER 是 enum.js 里定义的常量集合，这里直接复用保证 key 跟 `filter`
-// ref 的取值始终一致 — 写错字符串的代价太高了。
-const sidebarFilters = [
-  { key: SESSION_FILTER.MINE, label: '我的' },
-  { key: SESSION_FILTER.UNASSIGNED, label: '未分配的' },
-  { key: SESSION_FILTER.ALL, label: '全部' }
-]
-
 // Two independent Agent-related states. Keep them separate on purpose:
 //   - selectedAgentId: which Agent's style the operator wants to write in.
 //     Drives the suggestion area (the single reply card shown above the
@@ -169,7 +150,7 @@ const currentTakenOverAgentId = computed(() => {
   if (!key) return null
   return takeoverByConv.get(key)?.agentId || null
 })
-// Data — agents and groups. Conversation data is owned by ConversationList.
+// Data — agents and groups. Conversation data is owned by Conversations.
 const agents = reactive([])
 const agentsLoaded = ref(false)
 
@@ -776,53 +757,13 @@ function clearTakeoverForConv(conversationType, conversationId) {
       @status-change="handleStatusChange"
     />
 
-    <aside class="tyn-sidebar">
-      <!-- 顶部 tab 过滤器：切换时只换下方 convos 区内容，filters 区自身不重建。 -->
-      <div class="tyn-sidebar__filters">
-        <button
-          v-for="f in sidebarFilters"
-          :key="f.key"
-          class="tyn-sidebar__filter"
-          :class="{ active: filter === f.key }"
-          @click="() => { console.log('[filter] click', f.key); filter = f.key }"
-        >
-          <span class="tyn-sidebar__filter-label">{{ f.label }}</span>
-          <!-- 未读/待办数为 0 时不展示徽章，避免空标签占位 -->
-          <span
-            v-if="filterCounts[f.key]"
-            class="tyn-sidebar__filter-count"
-          >{{ filterCounts[f.key] }}</span>
-        </button>
-      </div>
-
-      <!--
-        下方 convos 区：filter='unassigned' 渲染工单列表，其他渲染会话列表。
-        切 tab 时这一块会被换掉，filters 容器不动。
-      -->
-      <ConversationList
-        :active-id="currentView === 'conversation' ? currentConvoId : null"
-        :filter="filter"
-        @select="handleConvoSelect"
-        @conversation-op="handleConversationOp"
-        @suggestion-received="handleSuggestionReceived"
-      >
-        <template #groups>
-          <div
-            v-for="g in groups"
-            :key="g.id"
-            class="tyn-group-item"
-            :class="{ active: currentView === 'group' && currentGroupId === g.id }"
-            @click="handleGroupSelect(g.id)"
-          >
-            <div class="tyn-group-item__icon">👥</div>
-            <div>
-              <div style="font-weight: 500;">{{ g.name }}</div>
-              <div style="font-size: 11px; color: var(--text-3);">{{ g.agentCount }} 个 Agent</div>
-            </div>
-          </div>
-        </template>
-      </ConversationList>
-    </aside>
+    <!-- 会话面板：二级过滤侧栏 + 会话列表 -->
+    <Conversations
+      :active-id="currentView === 'conversation' ? currentConvoId : null"
+      @select="handleConvoSelect"
+      @conversation-op="handleConversationOp"
+      @suggestion-received="handleSuggestionReceived"
+    />
 
     <ChatMain
       v-if="!hasNoSelection"

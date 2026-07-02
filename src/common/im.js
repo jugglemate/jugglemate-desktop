@@ -598,6 +598,7 @@ export default {
   removeConversationFromAssignedTag,
   addConversationToMyTicketTag,
   removeConversationFromMyTicketTag,
+  formatTicketAssignPreview,
   // 响应式连接状态 — 用于 UI 展示「连接中 / 已连接」之类的指示
   connectionState,
   Event,

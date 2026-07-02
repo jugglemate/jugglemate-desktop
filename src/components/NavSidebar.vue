@@ -189,7 +189,7 @@ const navItems = [
 
 /* macOS：为系统 traffic lights 留出 38px 顶部空间 */
 .nav-rail--mac {
-  padding-top: 40px;
+  padding-top: 22px;
 }
 
 .nav-rail .nav-item {
@@ -260,7 +260,7 @@ const navItems = [
 /* === me-mini：头像 + 状态点 === */
 .me-mini {
   width: 60px;
-  margin: 4px 0 10px;
+  margin: 6px 0;
   background: rgba(255, 255, 255, .06);
   border: 1px solid rgba(255, 255, 255, .08);
   border-radius: 10px;

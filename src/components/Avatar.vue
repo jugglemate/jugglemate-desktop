@@ -23,6 +23,7 @@ function formatName(name = '') {
 }
 
 function getColorIndex(name = '') {
+  console.log('getColorIndex', name, name.charCodeAt(0) % 6)
   return name.charCodeAt(0) % 6
 }
 </script>

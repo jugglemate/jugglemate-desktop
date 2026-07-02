@@ -94,3 +94,48 @@ export const SESSION_FILTER = {
   UNASSIGNED: 'unassigned',
   ALL: 'all'
 }
+
+// 平台 tag id（业务侧定义，对应会话对象的 platform 字段）。
+// 和 `PLATFORM` 下面的 key 一一对应；选中"全部"时上层不携带 tag。
+export const PLATFORM_TAG_ID = {
+  WEB: 'web',
+  TELEGRAM: 'telegram',
+  JUGGLECHAT: 'jugglechat'
+}
+
+// 平台选项。`ALL` 排在最前，默认选中；`ALL` 不携带 tag 走"不过滤"路径。
+export const PLATFORM = {
+  ALL: 'all',
+  WEB: 'web',
+  TELEGRAM: 'telegram',
+  JUGGLECHAT: 'jugglechat'
+}
+
+// 平台展示元信息（label / 圆点颜色 / 顺序）。
+// 顺序决定侧栏渲染顺序，颜色给会话列表里的 plat-dot 用。
+export const PLATFORM_META = {
+  [PLATFORM.ALL]:        { label: '全部',     color: '',            order: 0 },
+  [PLATFORM.WEB]:        { label: 'Web',      color: '#000000',     order: 1 },
+  [PLATFORM.TELEGRAM]:   { label: 'Telegram', color: '#FF2442',     order: 2 },
+  [PLATFORM.JUGGLECHAT]: { label: 'JuggleChat', color: '#07C160',   order: 3 }
+}
+
+// "AI 托管中" = 会话被当前 agent 接管（im.js 的 TAKEOVER_TAG_ID）。
+// 直接复用 im.isInTakeoverTag(c) — 不再单独定义 enum value，沿用 takeover 这条轴。
+// 历史值 'takeover' / 'pending_reply' / 'ai_takeover' 保留为 alias，向后兼容旧代码。
+export const VIEW = {
+  MINE: 'mine',                 // 我的（tag = my_ticket）
+  UNASSIGNED: 'unassigned',     // 待分配（tag != assigned）
+  AI_TAKEOVER: 'ai_takeover',   // AI 托管中 = 接管中（im.isInTakeoverTag）
+  // TAKEOVER: 'takeover',         // alias，等价 AI_TAKEOVER
+  ALL: 'all'                    // 全部
+}
+
+// 视图展示元信息。label 给 UI 看，key 跟 SESSION_FILTER / VIEW 取值对齐。
+// 视图 4 个：我的 / 待分配 / AI 托管中 / 全部。
+export const VIEW_META = {
+  [VIEW.MINE]:        { label: '我的',       order: 0 },
+  [VIEW.UNASSIGNED]:  { label: '待分配',     order: 1 },
+  [VIEW.AI_TAKEOVER]: { label: 'AI 托管中',  order: 2 },
+  [VIEW.ALL]:         { label: '全部',       order: 4 }
+}
