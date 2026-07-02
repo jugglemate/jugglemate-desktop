@@ -28,12 +28,24 @@ const currentUserName = computed(() => currentUser.value?.name || '用户')
 const currentUserRole = computed(() => currentUser.value?.role ?? null)
 
 // Navigation & drawer state
-const activeNav = ref('messages')
+// activeNav: inbox | team | data
+const activeNav = ref('inbox')
 const showUserDrawer = ref(false)
 const currentUserId = computed(() => currentUser.value?.id || 'user_12345678')
 
+// 收件箱未读数 = "全部" tab 的未读数（filterCounts.all 在 IM 同步后更新）
+const inboxBadge = computed(() => filterCounts?.all || 0)
+
 function handleNavChange(nav) {
   activeNav.value = nav
+  // 团队 / 数据 暂时没路由，先打日志
+  if (nav === 'team' || nav === 'data') {
+    console.log('[nav]', nav, '暂未实现路由')
+  }
+}
+function handleStatusChange(key) {
+  // TODO: 同步到后端 / juggle 当前用户状态
+  console.log('[status-change]', key)
 }
 
 // Debug: log IM connection state at mount
@@ -756,8 +768,12 @@ function clearTakeoverForConv(conversationType, conversationId) {
     <div class="titlebar-drag"></div>
     <NavSidebar
       :active-nav="activeNav"
-      @open-user-drawer="showUserDrawer = true"
+      :inbox-badge="inboxBadge"
+      :stats="{ sessionsToday: null, satisfaction: null, avgResponseSec: null }"
       @nav-change="handleNavChange"
+      @open-settings="showUserDrawer = true"
+      @logout="handleLogout"
+      @status-change="handleStatusChange"
     />
 
     <aside class="tyn-sidebar">

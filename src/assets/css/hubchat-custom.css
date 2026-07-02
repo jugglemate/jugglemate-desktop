@@ -2259,7 +2259,7 @@
   height: 100%;
   font-weight: 600;
   text-transform: uppercase;
-  color: var(var(--bg));
+  color: var(--bg);
 }
 
 .tyn-avatar__platform {
