@@ -1,25 +1,4 @@
 <script setup>
-// Central chat panel. Brings together the migration pieces:
-//   - MessageItem dispatcher → renders the message bubbles
-//   - ImagePreviewer → lightbox for clicked images
-//   - MessageMenu + MessageContextEmoji → right-click on a message
-//   - TransferDialog → forwarding target picker
-//   - ReplyQuote → "replying to ..." banner above the composer
-//   - ConversationList → IM message events (history, realtime, recall, ...)
-//   - juggle.sendMessage / sendImageMessage / sendFileMessage / sendVideoMessage
-//     / sendMergeMessage / recallMessage / removeMessages / addMessageReaction
-//     / removeMessageReaction for the operation side
-//
-// IM events are subscribed in onMounted; the conversation-change watcher
-// re-fetches history. Group read percentages, read state, and per-message
-// sentState are pulled directly from the message object — they update via
-// the MESSAGE_READ / MESSAGE_UPDATED events.
-//
-// The component is intentionally self-contained: it accepts the current
-// conversation as a prop and emits back only the things MainView needs to
-// know about (e.g. conversation menu ops will be wired in P2 via the
-// ConversationList side).
-
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import im from '../common/im'
 import { SERVER_PATH, post, get } from '../services/api'

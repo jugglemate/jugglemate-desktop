@@ -1,17 +1,4 @@
 <script setup>
-// Right-click context menu for a conversation row. The menu intentionally
-// exposes only the compact operations currently needed:
-//   - 标记未读              (juggle.markUnread)
-//   - 删除会话              (juggle.removeConversation)
-//
-// The parent passes a single `conversation` (mapped shape from
-// ConversationList). The menu emits `select` with the operation key and the
-// conversation; the parent (MainView) calls the SDK and updates local state.
-//
-// Positioning: parent provides `x` / `y` (clientX / clientY) in viewport
-// coordinates. The menu auto-flips when it would overflow the right or
-// bottom edge.
-
 import { computed } from 'vue'
 
 const props = defineProps({

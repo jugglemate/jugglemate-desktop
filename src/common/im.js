@@ -144,9 +144,6 @@ async function reconcileTakeoverTag(list = []) {
   return tagged
 }
 
-// Backwards-compatible entry point. ConversationList calls this after
-// fetching conversations to populate the local set; reconcile is the
-// actual work, this is just a clear name at the call site.
 function syncTakeoverTagFromList(list = []) {
   return reconcileTakeoverTag(list)
 }
@@ -321,14 +318,6 @@ function sendTyping(conversation, content) {
   }, { onbefore: () => {} })
 }
 
-// ---------------------------------------------------------------------------
-// Tag helpers — the only public surface for "接管中" group operations.
-// All callers (MainView, ConversationList, etc.) should go through these
-// rather than calling juggle.addConversationsToTag directly, so the local
-// reactive set stays consistent and the takeover tag id is defined in one
-// place.
-// ---------------------------------------------------------------------------
-
 // 给指定会话打上 / 摘掉 assigned tag（业务调用点：工单被认领 / 转移 / 释放）。
 // 内部构造的 payload 形如 { id: 'assigned', conversations: [...] }，调用
 // juggle.addConversationsToTag / removeConversationsFromTag。SDK 本身允许一个
@@ -489,7 +478,6 @@ function msgShortFormat(message) {
     }
     if (typeof content === 'string') return content
   }
-  console.log('[ConversationList] -------------', name)
   if (name === MessageType.IMAGE) return '[图片]'
   if (name === MessageType.VOICE) return '[语音]'
   if (name === MessageType.VIDEO) return '[视频]'

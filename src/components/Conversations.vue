@@ -8,15 +8,17 @@
  *   - 右：会话列表（搜索 / 未读 dot / 时间 / 标签 / 头像）
  * 组合过滤：视图 ∩ 平台
  *
- * 视图 → tag 的映射（只给后端 getConversations 用）：
+ * 视图 + 平台都直接走 IM 后端 getConversations：
+ *   协议层 QryConversationsReq.tag 是单个 string，没有"多 tag AND"语义，
+ *   所以 fetchConversations() 会各发一次请求，
+ *   视图带 viewTag、平台带 platformTag，前端按 conversationId 求交集。
+ * 视图 → viewTag：
  *   mine        → CONVERSATION_TAG_ID.MY_TICKET
  *   unassigned  → '!assigned'
- *   ai_takeover → 不传 tag（前端按 im.isInTakeoverTag 过滤，== 接管中会话列表）
+ *   ai_takeover → TAKEOVER_TAG_ID（jm_takeover，im.js 定义）
  *   all         → 不传 tag
- * 平台 → 平台 tag：
- *   all / 其它   → 不传 / 传对应 platform 字符串
- *   说明：IM 的 getConversations 是否支持按 platform 过滤取决于后端实现，
- *   暂时前端 in-memory 用 convo.platform 二次过滤（与现有 isVisible 模式一致）。
+ * 平台 → platformTag：
+ *   all / 其它  → 不传 / 传对应 platform 字符串（web / telegram / jugglechat）
  */
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import im from '../common/im'
@@ -83,7 +85,7 @@ function selectPlatform(key) {
 }
 
 // ---------------------------------------------------------------------------
-// IM 集成（跟 ConversationList 同款骨架）
+// IM 集成
 // ---------------------------------------------------------------------------
 const juggle = im.getCurrent()
 const { Event } = juggle || im
@@ -96,35 +98,31 @@ const typingTimers = new Map()
 // 本地兜底数据（IM 还没接上时用）
 const conversations = reactive([])
 
-// 视图 → 传给 juggle.getConversations 的 tag 参数
+// 视图 → juggle.getConversations 的 tag 参数
+//   mine        → MY_TICKET
+//   unassigned  → '!assigned'
+//   ai_takeover → jm_takeover（im.js 的 TAKEOVER_TAG_ID）
+//   all         → undefined（不传 tag）
 function buildTagParamForView(view) {
   if (view === VIEW.MINE) return CONVERSATION_TAG_ID.MY_TICKET
   if (view === VIEW.UNASSIGNED) return '!' + CONVERSATION_TAG_ID.ASSIGNED
-  // ai_takeover / all — 留给前端过滤
+  if (view === VIEW.AI_TAKEOVER) return im.TAKEOVER_TAG_ID
   return undefined
 }
 
-// 视图在前端的二次过滤（"AI 托管中" = 接管中会话）
-// AI 托管中直接复用 im.js 的接管 tag set（im.isInTakeoverTag），
-// 跟原 ConversationList 的"接管中" tab 一个意思。
-function matchViewInFrontend(convo, view) {
-  if (view === VIEW.AI_TAKEOVER) return im.isInTakeoverTag(convo)
-  return true
+// 平台 → juggle.getConversations 的 tag 参数
+//   ALL 不传 tag；其它（web / telegram / jugglechat）直接当 tag 用。
+// 协议层 QryConversationsReq.tag 是单个 string，没有"多 tag AND"的语义，
+// 所以"视图"和"平台"必须各发一次 getConversations，再前端求交集。
+// 这部分逻辑在 fetchConversations() 里实现。
+function buildTagParamForPlatform(platform) {
+  if (!platform || platform === PLATFORM.ALL) return undefined
+  return platform
 }
 
-// 平台在前端的二次过滤（按 convo.platform 字符串判等，case-insensitive）
-function matchPlatformInFrontend(convo, platform) {
-  if (!platform || platform === PLATFORM.ALL) return true
-  if (!convo?.platform) return false
-  return String(convo.platform).toLowerCase() === platform
-}
-
-const filteredConversations = computed(() => {
-  return imConversations.filter((c) =>
-    matchViewInFrontend(c, currentView.value) &&
-    matchPlatformInFrontend(c, currentPlatform.value)
-  )
-})
+// imConversations 已经是"当前视图 ∩ 当前平台"的最终结果，
+// 不要再做前端过滤，直接透传给模板。
+const filteredConversations = computed(() => imConversations)
 
 // 头像 / 名字 / 预览 / 时间 字段映射
 function formatTime(timestamp) {
@@ -259,13 +257,32 @@ async function fetchConversations() {
     console.warn('[Conversations] juggle.getConversations not available')
     return
   }
-  const tag = buildTagParamForView(currentView.value)
-  console.warn('[Conversations] fetchConversations with tag', tag)
+  const viewTag = buildTagParamForView(currentView.value)
+  const platformTag = buildTagParamForPlatform(currentPlatform.value)
+  console.warn('[Conversations] fetchConversations viewTag=', viewTag, 'platformTag=', platformTag)
   try {
-    const result = await juggle.getConversations(tag ? { tag } : {})
-    console.log('[Conversations] fetchConversations result', result)
-    const list = result?.conversations || []
-    im.syncTakeoverTagFromList(list)
+    // 协议层 QryConversationsReq.tag 是单值，所以视图 / 平台要各发一次。
+    // - 视图带 tag：后端按 tag 直接过滤（MY_TICKET / !assigned / jm_takeover）
+    // - 平台带 tag：后端按 platform tag 过滤（web / telegram / jugglechat）
+    // - 至少一方不传 tag 时，那一方走"全量"，与另一方做交集。
+    const [viewList, platformList] = await Promise.all([
+      juggle.getConversations(viewTag ? { tag: viewTag } : {}),
+      platformTag
+        ? juggle.getConversations({ tag: platformTag })
+        : Promise.resolve(null)
+    ])
+    const viewConvos = (viewList?.conversations) || []
+    const platformConvos = platformList ? (platformList.conversations || []) : null
+    let list
+    if (platformConvos) {
+      // 平台带 tag：取两个集合的交集（按 conversationId）。
+      const platformIds = new Set(platformConvos.map((c) => c.conversationId || c.id))
+      list = viewConvos.filter((c) => platformIds.has(c.conversationId || c.id))
+    } else {
+      // 平台 = ALL：直接用视图结果。
+      list = viewConvos
+    }
+    im.syncTakeoverTagFromList(viewConvos)
     imConversations.splice(0, imConversations.length, ...list.map(mapConversation))
     imReady.value = true
   } catch (e) {
@@ -273,13 +290,11 @@ async function fetchConversations() {
   }
 }
 
-// 视图切换时可能需要重新 fetch（带 tag 的视图）
-watch(currentView, (v) => {
-  if (v === VIEW.MINE || v === VIEW.UNASSIGNED) {
-    fetchConversations()
-  }
-  // ai_takeover / all 都可以复用已 fetch 的数据
-})
+// 视图或平台变化时都重新走 IM 拉取。
+// - 视图：mine / unassigned / ai_takeover / all 都会影响 tag 维度，必须重拉。
+// - 平台：web / telegram / jugglechat 也是后端 tag，必须重拉。
+watch(currentView, () => fetchConversations())
+watch(currentPlatform, () => fetchConversations())
 
 // ---------------------------------------------------------------------------
 // 点击会话 → 通知父组件展示 chat
@@ -459,7 +474,7 @@ const sortedConversations = computed(() => {
       </div>
     </aside>
 
-    <!-- 右键菜单（保持跟 ConversationList 同款） -->
+    <!-- 右键菜单 -->
     <ConversationMenu
       v-if="menuState.show"
       :show="menuState.show"
