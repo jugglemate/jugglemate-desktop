@@ -39,10 +39,14 @@ void _im
 </template>
 
 <style scoped>
+/* 对齐 module-4.html 中 .msg .bubble —— 14px / 1.55 / 换行保留 */
 .jm-msg-text {
   display: block;
   white-space: pre-wrap;
   word-break: break-word;
+  font-size: 14px;
+  line-height: 1.55;
+  color: inherit;
 }
 
 .jm-msg-text__updated {
@@ -50,5 +54,6 @@ void _im
   font-size: 10px;
   color: var(--text-3);
   font-style: italic;
+  opacity: 0.75;
 }
 </style>

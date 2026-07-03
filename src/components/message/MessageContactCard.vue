@@ -61,7 +61,7 @@ function initial(name) {
   min-width: 220px;
   max-width: 280px;
   padding: 10px 12px;
-  background: var(var(--bg));
+  background: var(--bg);
   border: 1px solid var(--border-soft);
   border-radius: var(--r);
 }

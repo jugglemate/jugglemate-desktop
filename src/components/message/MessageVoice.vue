@@ -71,7 +71,7 @@ function onEnded() {
   align-items: center;
   gap: 10px;
   padding: 8px 14px;
-  background: var(var(--bg));
+  background: var(--bg);
   border: 1px solid var(--border-soft);
   border-radius: 18px;
   cursor: pointer;

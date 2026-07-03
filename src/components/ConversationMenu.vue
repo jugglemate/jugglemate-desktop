@@ -104,7 +104,7 @@ function onSelect(item) {
   position: fixed;
   z-index: 1000;
   min-width: 160px;
-  background: var(var(--bg));
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--r);
   box-shadow: var(--shadow-lg);

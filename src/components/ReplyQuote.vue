@@ -42,7 +42,7 @@ const preview = computed(() => {
   <div v-if="message" class="jm-reply-quote">
     <div class="jm-reply-quote__line"></div>
     <div class="jm-reply-quote__content">
-      <div class="jm-reply-quote__label">引用</div>
+      <div class="jm-reply-quote__label">回复</div>
       <div class="jm-reply-quote__preview">{{ preview }}</div>
     </div>
     <button

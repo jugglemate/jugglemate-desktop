@@ -63,7 +63,7 @@ onBeforeUnmount(() => emitter.off(EVENT))
   max-width: 480px;
   padding: 10px 16px;
   border-radius: var(--r);
-  background: var(var(--bg));
+  background: var(--bg);
   color: var(--text-1);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-md);

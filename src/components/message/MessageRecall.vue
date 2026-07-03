@@ -49,7 +49,7 @@ void _im
   padding: 4px 12px;
   font-size: 11px;
   color: var(--text-3);
-  background: var(var(--bg));
+  background: var(--bg);
   border-radius: var(--r-sm);
   margin: 6px 0;
 }

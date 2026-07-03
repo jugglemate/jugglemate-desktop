@@ -131,8 +131,8 @@ function onUnhostClick(e) {
 <style scoped>
 /* ============== 容器 ============== */
 .customer-side {
-  width: 340px;
-  min-width: 340px;
+  width: 300px;
+  min-width: 300px;
   flex-shrink: 0;
   height: 100vh;
   background: var(--bg);
@@ -211,6 +211,7 @@ function onUnhostClick(e) {
   border-bottom: 1px solid var(--border);
   background: var(--bg);
   flex-shrink: 0;
+  height: 56px;
 }
 .side-tab {
   padding: 11px 14px;

@@ -52,7 +52,7 @@ const raw = computed(() => {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: var(var(--bg));
+  background: var(--bg);
   color: var(--text-2);
   font-weight: 600;
   font-size: 11px;

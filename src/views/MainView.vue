@@ -118,6 +118,9 @@ const currentSession = ref(null)  // { session_id, unique_name, agent: {...}, au
 
 // agentMsgBot 建议队列：session_id → [{ content, unique_name, msg_id }]
 const pendingSuggestions = reactive({})
+// 用户点 × 后，整个 tyn-agent-suggestions 关闭（按 session 记），
+// 切换会话/会话重新产生建议时由 computed 自动恢复显示
+const dismissedSuggestions = reactive({})
 
 const selectedAgent = computed(
   () => agents.find((a) => a.id === selectedAgentId.value) || null
@@ -177,7 +180,12 @@ const __MOCK_AGENTS__ = {
         avatar_url: 'https://snailchat-file.oss-ap-southeast-1.aliyuncs.com/avatars/nwm6fxqt2aeebhb7/1782181828062_eTFkRX847lV.webp',
         greeting: '嗨，我是小天～告诉我你想看哪个城市的天气，我来帮你查。',
         status: 'trained',
-        active_version: 'v1'
+        active_version: 'v1',
+        suggestions: [
+          '好的，请问您想查询哪个城市的天气？我可以为您实时查询最近 24 小时的天气情况。',
+          '收到～告诉我城市名就行，比如「上海」「北京」，也可以发位置给我。',
+          '目前支持国内 300+ 主要城市，未来会扩展到海外城市，敬请期待。'
+        ]
       },
       {
         bot_id: '5zYkpWbFuhB',
@@ -188,7 +196,12 @@ const __MOCK_AGENTS__ = {
         avatar_url: 'https://snailchat-file.oss-ap-southeast-1.aliyuncs.com/avatars/nwm6fxqt2aeebhb7/1781687976720_WTFA1lbv5DR.webp',
         greeting: '欢迎使用 juggleIM',
         status: 'trained',
-        active_version: 'v1'
+        active_version: 'v1',
+        suggestions: [
+          '您好，我是 juggleIM 智能助手，请问有什么可以帮您？',
+          '请稍等，我这边帮您查一下相关信息。',
+          '如果您愿意，可以再详细描述一下遇到的问题，方便我更准确地帮您。'
+        ]
       },
       {
         bot_id: 'Gj4QLs9YFwC',
@@ -199,7 +212,12 @@ const __MOCK_AGENTS__ = {
         avatar_url: 'https://snailchat-file.oss-ap-southeast-1.aliyuncs.com/avatars/nwm6fxqt2aeebhb7/1781601261266_-sNQYI80MwI.webp',
         greeting: '你好',
         status: 'trained',
-        active_version: 'v1'
+        active_version: 'v1',
+        suggestions: [
+          '嗨～我是小方糖，有什么可以帮到你的吗？',
+          '在的呢，告诉我你遇到的问题，我陪你一起看看～',
+          '已收到你发的内容啦，让我帮你想想办法 (◕‿◕)'
+        ]
       }
     ],
     offset: '675NdFjkx'
@@ -276,10 +294,14 @@ const currentMessages = computed(() => {
 })
 
 const currentSuggestions = computed(() => {
-  if (currentView.value === 'group') return []
+  // if (currentView.value === 'group') return []
   // 托管中 → 隐藏建议。Agent 已经在自动接管了，运营不需要从候选回复里
   // 挑一条手发，建议区会让输入区产生无意义的"高度占位"。
   if (takenOverAgent.value) return []
+
+  // 用户主动关掉过 → 本次会话内不再展示
+  const sidForDismiss = currentSession.value?.session_id
+  if (sidForDismiss && dismissedSuggestions[sidForDismiss]) return []
 
   const result = []
 
@@ -375,6 +397,18 @@ function handleClearSuggestion(msgId) {
   if (pendingSuggestions[sid].length === 0) {
     delete pendingSuggestions[sid]
   }
+}
+
+function handleDismissSuggestions() {
+  console.log('[MainView] handleDismissSuggestions')
+  // 用户点 × 关闭整组 AI 建议：
+  //   1) 清掉当前会话的实时建议（pendingSuggestions[sid]）
+  //   2) 标记 dismissedSuggestions[sid] = true，挡住模板建议的展示
+  //   模板建议会在重新选择 agent / 切换会话 / 后端新推送时被自然覆盖
+  const sid = currentSession.value?.session_id
+  if (!sid) return
+  if (pendingSuggestions[sid]) delete pendingSuggestions[sid]
+  dismissedSuggestions[sid] = true
 }
 
 async function lookupOrCreateSession(convo) {
@@ -800,6 +834,7 @@ function clearTakeoverForConv(conversationType, conversationId) {
       :conversation="currentView === 'conversation' ? currentConversation : null"
       :messages="currentMessages"
       :suggestions="currentSuggestions"
+      @dismiss-suggestions="handleDismissSuggestions"
       :is-group="currentView === 'group'"
       :selected-agent="selectedAgent"
       :taken-over-agent="takenOverAgent"

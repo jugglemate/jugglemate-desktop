@@ -91,6 +91,20 @@ const showSender = computed(() => {
   return a?.sender?.id !== props.message?.sender?.id
 })
 
+// Hide the avatar when this message and the previous one share a sender
+// AND are within a short time window. We keep the slot rendered (just
+// visually collapsed) so bubbles stay vertically aligned. Skipped for
+// outgoing so the bubble's right edge stays flush.
+const hideAvatar = computed(() => {
+  if (props.message?.isSender) return false
+  const a = props.prevMessage
+  if (!a) return false
+  if (a?.sender?.id !== props.message?.sender?.id) return false
+  // Don't hide across long gaps — would look like a missing avatar.
+  const gap = (props.message?.sentTime || 0) - (a?.sentTime || 0)
+  return gap < 5 * 60_000
+})
+
 const senderName = computed(() => {
   return props.message?.sender?.name || props.message?.sender?.id || ''
 })
@@ -109,8 +123,8 @@ function onPreview(payload) {
 
 <template>
   <!-- Timeline / recall are full-width rows; no avatar or bubble. -->
-  <MessageTimeline v-if="kind === 'timeline'" :message="message" />
-  <MessageRecall v-else-if="kind === 'recall'" :message="message" />
+  <!-- <MessageTimeline v-if="kind === 'timeline'" :message="message" /> -->
+  <MessageRecall v-if="kind === 'recall'" :message="message" />
   <MessageTicketAssign v-else-if="kind === 'ticketassign'" :message="message" />
 
   <!-- Default: bubble with avatar. -->
@@ -124,7 +138,7 @@ function onPreview(payload) {
     @reaction="(p) => emit('reaction', p)"
   >
     <template #avatar>
-      <MessageAvatar :sender="message.sender" />
+      <MessageAvatar :sender="message.sender" :hide="hideAvatar" />
     </template>
 
     <template #sender>
@@ -132,8 +146,8 @@ function onPreview(payload) {
     </template>
 
     <MessageText v-if="kind === 'text'" :message="message" />
-    <MessageImage v-else-if="kind === 'image'" :message="message" @preview="onPreview" />
-    <MessageFile v-else-if="kind === 'file'" :message="message" />
+    <MessageImage v-else-if="kind === 'image'" :message="message" :incoming="!message?.isSender" @preview="onPreview" />
+    <MessageFile v-else-if="kind === 'file'" :message="message" :incoming="!message?.isSender" />
     <MessageVideo v-else-if="kind === 'video'" :message="message" />
     <MessageVoice v-else-if="kind === 'voice'" :message="message" />
     <MessageContactCard v-else-if="kind === 'card'" :message="message" />

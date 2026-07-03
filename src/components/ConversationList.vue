@@ -71,7 +71,6 @@ function shortFormat(message) {
     // 走到这里只剩纯文本 / 已被 SDK 序列化的文本消息，原样展示即可。
     return content
   }
-  console.log('[ConversationList] -------------', content.type)
   if (content.content !== undefined && content.content !== null) return String(content.content)
   if (content.text) return content.text
   if (content.type === 'image' || content.image) return '[图片]'

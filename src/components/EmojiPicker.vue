@@ -58,7 +58,7 @@ function pick(emoji) {
   align-items: center;
   gap: 2px;
   padding: 4px;
-  background: var(var(--bg));
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--r);
   box-shadow: var(--shadow-lg);

@@ -167,17 +167,19 @@ function onContext(e) {
             <span class="jm-msg__progress-label">{{ uploadPercent }}%</span>
           </div>
 
-          <!-- Status / read ticks for outgoing messages. -->
-          <span
-            v-if="direction === 'outgoing'"
+          <!-- Status / read ticks for outgoing messages. Skipped on media
+               because the artifact supplies its own surface; the dot would
+               just sit on top of the thumbnail. -->
+          <!-- <span
+            v-if="direction === 'outgoing' && !isMedia"
             class="jm-msg__status"
             :class="[`jm-msg__status--${status}`]"
             :title="status"
-          ></span>
+          ></span> -->
         </div>
 
         <!-- Group read ring. Sits next to outgoing bubbles in group chats. -->
-        <div
+        <!-- <div
           v-if="isGroup && direction === 'outgoing' && isSuccess"
           class="jm-msg__readring"
           :title="readSummary"
@@ -197,7 +199,7 @@ function onContext(e) {
               :stroke-dasharray="`${(readPercent / 360) * 100} 100`"
             />
           </svg>
-        </div>
+        </div> -->
 
         <button
           v-if="isFailed"
@@ -208,7 +210,7 @@ function onContext(e) {
           重发
         </button>
       </div>
-
+      <slot name="footer" />
       <!-- Time + ticks row, only when there's something to show. -->
       <div
         v-if="showMeta && (timeLabel || (direction === 'outgoing' && !isGroup))"
@@ -230,8 +232,6 @@ function onContext(e) {
           >✓</span>
         </span>
       </div>
-
-      <slot name="footer" />
     </div>
   </div>
 </template>
@@ -240,9 +240,10 @@ function onContext(e) {
 .jm-msg {
   display: flex;
   gap: 10px;
-  max-width: 70%;
+  max-width: 75%;
   animation: jm-msgIn 200ms ease-out;
   align-items: flex-start;
+  margin-top: 10px;
 }
 
 .jm-msg--outgoing {
@@ -255,7 +256,12 @@ function onContext(e) {
 }
 
 .jm-msg--compact {
-  margin-top: 0;
+  margin-top: 1px;
+}
+
+.jm-msg--compact .jm-msg__bubble {
+  padding-top: 7px;
+  padding-bottom: 7px;
 }
 
 .jm-msg__body {
@@ -280,31 +286,46 @@ function onContext(e) {
 
 .jm-msg__bubble {
   position: relative;
-  padding: 12px 16px;
-  border-radius: 16px;
+  padding: 9px 13px;
+  border-radius: 14px;
   font-size: 14px;
   line-height: 1.55;
-  color: #333333;
+  color: var(--text-1);
   word-break: break-word;
   white-space: pre-wrap;
   max-width: 100%;
   min-width: 0;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: box-shadow 160ms ease, transform 160ms ease;
 }
 
+.jm-msg:hover .jm-msg__bubble {
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
+}
+
+/* 收件人（客户/incoming）
+   对齐 module-4.html .msg.from-customer .bubble：
+   白底 + 1px 边 + 文字深色 + 左下角尖 */
 .jm-msg__bubble--incoming {
   background: #FFFFFF;
-  color: #333333;
-  border-radius: 4px 16px 16px 16px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  color: var(--text-1);
+  border: 1px solid var(--border);
+  border-top-left-radius: 4px;
 }
 
+/* 发件人（客服/outgoing）
+   对齐 module-4.html .msg.from-agent .bubble：
+   主色实底 + 白色文字 + 右下角尖 */
 .jm-msg__bubble--outgoing {
-  /* background: #F0F5FF;
-  color: #333333; */
-  background: #2187fc;
+  background: var(--primary);
   color: #fff;
-  border-radius: 16px 4px 16px 16px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  border: 1px solid transparent;
+  border-top-right-radius: 4px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.jm-msg--outgoing:hover .jm-msg__bubble {
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
 }
 
 .jm-msg__bubble--no-bg {
@@ -318,20 +339,23 @@ function onContext(e) {
    renders flush. We keep the same border-radius (rounded-md) so the
    artifact has a tidy silhouette, and the artifact's own root supplies
    the rest of the visual chrome. The `--failed` outline still works on
-   top because the box-shadow doesn't depend on background. */
+   top because the box-shadow doesn't depend on background.
+   文字色继承父类 —— 媒体子组件（File/Image 等）自己处理 incoming/outgoing
+   配色，bubble 只负责透明和 0 padding。 */
 .jm-msg__bubble--media {
-  background: transparent;
-  padding: 0;
+  /* background: transparent; */
+  padding: 8px;
   border: none;
   border-radius: var(--r);
   font-size: inherit;
   line-height: 0;
   word-break: normal;
   white-space: normal;
+  color: inherit;
 }
 
 .jm-msg__bubble--failed {
-  box-shadow: 0 0 0 1px var(--danger);
+  box-shadow: 0 0 0 1px var(--danger), 0 1px 2px rgba(239, 68, 68, 0.08);
 }
 
 .jm-msg__progress {
@@ -341,18 +365,28 @@ function onContext(e) {
   align-items: center;
   justify-content: center;
   flex-direction: column;
-  background: oklch(0.16 0.008 260 / 0.7);
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
   border-radius: inherit;
   gap: 4px;
+  color: var(--text-1);
+  pointer-events: none;
+}
+
+.jm-msg--outgoing .jm-msg__progress {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
 }
 
 .jm-msg__progress-bar {
   position: absolute;
   left: 0;
-  bottom: 0;
+  top: 0;
   height: 3px;
-  background: var(--primary);
-  border-radius: 0 0 var(--r-lg) var(--r-lg);
+  background: currentColor;
+  opacity: 0.65;
+  border-radius: 0 0 6px 6px;
   transition: width var(--t-fast);
 }
 
@@ -360,8 +394,9 @@ function onContext(e) {
   position: relative;
   z-index: 1;
   font-size: 11px;
-  color: var(--text-1);
+  color: inherit;
   font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 
 .jm-msg__status {
@@ -373,6 +408,8 @@ function onContext(e) {
   vertical-align: middle;
   background: transparent;
   flex-shrink: 0;
+  align-self: flex-end;
+  margin-bottom: 4px;
 }
 
 .jm-msg__status--sending,
@@ -421,29 +458,43 @@ function onContext(e) {
 
 .jm-msg__resend {
   border: 1px solid var(--border);
-  background: transparent;
+  background: var(--bg-soft);
   color: var(--text-2);
   font-size: 11px;
-  padding: 2px 8px;
+  padding: 3px 9px;
   border-radius: var(--r-sm);
   cursor: pointer;
-  transition: all var(--t-fast);
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+  align-self: flex-end;
+  margin-bottom: 4px;
 }
 
 .jm-msg__resend:hover {
-  background: var(--primary-hover);
-  color: var(--text-1);
-  border-color: var(--text-3);
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+
+.jm-msg__resend:active {
+  transform: scale(0.96);
 }
 
 .jm-msg__meta {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  margin-top: 8px;
-  font-size: 12px;
-  color: #999999;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-3);
+  line-height: 1;
+}
+
+.jm-msg--outgoing .jm-msg__meta {
+  justify-content: flex-end;
+}
+
+.jm-msg--incoming .jm-msg__meta {
+  justify-content: flex-start;
 }
 
 .jm-msg__time {
@@ -453,13 +504,14 @@ function onContext(e) {
 .jm-msg__ticks {
   display: inline-flex;
   align-items: center;
-  gap: -2px;
-  margin-left: 2px;
+  margin-left: 4px;
+  line-height: 1;
 }
 
 .jm-msg__tick {
   font-size: 11px;
   color: var(--text-3);
+  line-height: 1;
 }
 
 .jm-msg__tick.is-read {
@@ -467,7 +519,7 @@ function onContext(e) {
 }
 
 .jm-msg__tick--double {
-  margin-left: -6px;
+  margin-left: -5px;
 }
 
 @keyframes jm-msgIn {

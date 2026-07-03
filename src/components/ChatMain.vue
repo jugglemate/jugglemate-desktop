@@ -2,7 +2,7 @@
 // Central chat panel. Brings together the migration pieces:
 //   - MessageItem dispatcher → renders the message bubbles
 //   - ImagePreviewer → lightbox for clicked images
-//   - MessageMenu / EmojiPicker → right-click on a message
+//   - MessageMenu + MessageContextEmoji → right-click on a message
 //   - TransferDialog → forwarding target picker
 //   - ReplyQuote → "replying to ..." banner above the composer
 //   - ConversationList → IM message events (history, realtime, recall, ...)
@@ -28,9 +28,9 @@ import utils from '../common/utils'
 import chatTime from '../common/chat-time-utils'
 import toast from '../common/toast'
 import MessageItem from './message/MessageItem.vue'
+import MessageContextEmoji from './MessageContextEmoji.vue'
 import MessageSender from './MessageSender.vue'
 import MessageMenu from './MessageMenu.vue'
-import EmojiPicker from './EmojiPicker.vue'
 import ImagePreviewer from './ImagePreviewer.vue'
 import TransferDialog from './TransferDialog.vue'
 import ReplyQuote from './ReplyQuote.vue'
@@ -135,7 +135,6 @@ const previewerUrl = ref('')
 // Message right-click menu
 const messageMenuState = ref({ show: false, x: 0, y: 0, message: null })
 // Emoji picker (sub-menu of message menu)
-const emojiPickerState = ref({ show: false, x: 0, y: 0, message: null })
 // Transfer dialog
 const transferState = ref({ show: false, message: null, targets: [] })
 
@@ -772,12 +771,23 @@ function onMessageContext({ event, message }) {
   // Position the menu near the click.
   let x = event.clientX
   let y = event.clientY
-  messageMenuState.value = { show: true, x, y, message }
+  // Align the menu+emoji pair to the bubble edge: outgoing messages
+  // sit on the right of the screen so we dock the pair to the right
+  // of the click (they extend LEFT); incoming messages are on the
+  // left so we dock to the left of the click (they extend RIGHT).
+  const align = message.isSender ? 'right' : 'left'
+  messageMenuState.value = { show: true, x, y, align, message }
 }
 
 function onMessageMenuClose() {
+  // Closing the menu also closes the companion emoji bar; the design
+  // treats them as a single right-click "surface".
   messageMenuState.value.show = false
   messageMenuState.value.message = null
+  // Reset the resolved menu top so a future re-open re-measures.
+  resolvedMenuTop.value = 0
+  resolvedMenuBottom.value = 0
+  menuFlipped.value = false
 }
 
 function onMessageMenuSelect({ key, message }) {
@@ -792,18 +802,7 @@ function onMessageMenuSelect({ key, message }) {
       replyTo.value = message
       break
     }
-    case 'reaction': {
-      // Pop the emoji picker next to the menu.
-      const m = messageMenuState.value
-      emojiPickerState.value = {
-        show: true,
-        x: m.x + 8,
-        y: m.y,
-        message
-      }
-      break
-    }
-    case 'transfer': {
+case 'transfer': {
       openTransferDialog(message)
       break
     }
@@ -818,10 +817,20 @@ function onMessageMenuSelect({ key, message }) {
   }
 }
 
-function onEmojiSelect({ name }) {
-  const m = emojiPickerState.value.message
-  if (!m) return
-  onAddReaction(m, name)
+// Quick reaction from the floating emoji pill. Closes the menu after
+// adding so the user doesn't see lingering overlays — they already got
+// the visual feedback (the bubble itself shows the reaction pill).
+// Track the right-click menu's resolved top edge so the companion
+// MessageContextEmoji overlay can dock directly above it. We measure
+// the live DOM via getBoundingClientRect in nextTick + rAF (the
+// teleport mounts first, then styles resolve) and stash the value in
+// `resolvedMenuTop`. The watcher resets it back to 0 on close.
+const menuFlipped = ref(false)
+
+function onQuickReaction({ name, message }) {
+  if (!name || !message) return
+  onAddReaction(message, name)
+  onMessageMenuClose()
 }
 
 async function onAddReaction(message, emojiName) {
@@ -1189,9 +1198,6 @@ function closeAllMenus() {
     messageMenuState.value.show = false
     messageMenuState.value.message = null
   }
-  if (emojiPickerState.value.show) {
-    emojiPickerState.value.show = false
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1251,6 +1257,7 @@ function handleEditSuggestion(suggestion) {
 }
 
 async function handleRejectSuggestion(suggestion) {
+  console.log('[ChatMain] handleRejectSuggestion', suggestion)
   if (!suggestion) return
   // 仅当有 agent_msg_id 时调用 Feedback API
   if (suggestion.agent_msg_id) {
@@ -1271,6 +1278,7 @@ async function handleRejectSuggestion(suggestion) {
     }
   }
   emit('clearSuggestion', suggestion.msg_id)
+  emit('dismissSuggestions')
 }
 
 function handleSuggestionClick(suggestion) {
@@ -1338,7 +1346,7 @@ function onCancelReply() {
           </div>
         </div>
       </div>
-      <div class="tyn-chat-header__actions" v-if="!isGroup && !isTicket">
+      <div class="tyn-chat-header__actions" v-if="!isTicket">
         <div
           class="tyn-chat-header__agent-mode"
           :data-mode="currentMode"
@@ -1500,24 +1508,28 @@ function onCancelReply() {
     </div>
 
     <!-- Agent Suggestions (only in conversation mode) -->
-    <div v-if="!isGroup && suggestions.length > 0" class="tyn-agent-suggestions">
-      <div class="tyn-agent-suggestions__title">Agent 回复建议</div>
-      <div class="tyn-suggestion-cards">
-        <div
-          v-for="(suggestion, index) in suggestions"
-          :key="index"
-          class="tyn-suggestion-card"
-          @click="handleSuggestionClick(suggestion)"
-        >
-          <div class="tyn-suggestion-card__agent">{{ suggestion.agent }}</div>
-          <div class="tyn-suggestion-card__text">{{ suggestion.text }}</div>
-          <div class="tyn-suggestion-card__actions">
-            <button class="tyn-btn tyn-btn--xs tyn-btn--primary" @click.stop="handleAdoptSuggestion(suggestion)">采纳</button>
-            <button class="tyn-btn tyn-btn--xs" @click.stop="handleEditSuggestion(suggestion)">编辑</button>
-            <button class="tyn-btn tyn-btn--xs tyn-btn--ghost" @click.stop="handleRejectSuggestion(suggestion)">拒绝</button>
-          </div>
+    <div v-if="suggestions.length > 0" class="tyn-agent-suggestions">
+      <button
+        v-for="(suggestion, index) in suggestions"
+        :key="index"
+        type="button"
+        class="tyn-suggestion-item"
+        @click="handleSuggestionClick(suggestion)"
+      >
+        <div class="tyn-suggestion-item__icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9.7 17 4 11.3l1.4-1.4 4.3 4.3 9-9L20 6.7z"/></svg>
         </div>
-      </div>
+        <div class="tyn-suggestion-item__body">
+          <div class="tyn-suggestion-item__label">{{ suggestion.agent }} · AI 回复建议</div>
+          <div class="tyn-suggestion-item__text">{{ suggestion.text }}</div>
+        </div>
+        <span
+          class="tyn-suggestion-item__close"
+          role="button"
+          aria-label="关闭建议"
+          @click.stop="handleRejectSuggestion(suggestion)"
+        >×</span>
+      </button>
     </div>
 
     <!-- Reply quote banner -->
@@ -1542,20 +1554,28 @@ function onCancelReply() {
     <!-- Message right-click menu -->
     <MessageMenu
       v-if="messageMenuState.show"
+      ref="messageMenuRef"
       :message="messageMenuState.message"
       :x="messageMenuState.x"
       :y="messageMenuState.y"
+      :align="messageMenuState.align"
       @select="onMessageMenuSelect"
       @close="onMessageMenuClose"
     />
 
-    <!-- Emoji picker (sub-menu) -->
-    <EmojiPicker
-      v-if="emojiPickerState.show"
-      :x="emojiPickerState.x"
-      :y="emojiPickerState.y"
-      @select="onEmojiSelect"
-      @close="emojiPickerState.show = false"
+    <!-- Floating quick-reaction pill. Always shown alongside the menu
+         in the .fig-aligned design — no separate "表情回复" button.
+         `menuTop` is the parent's measured top edge of the menu so
+         the pill docks directly above it (no height drift). -->
+    <MessageContextEmoji
+      v-if="messageMenuState.show"
+      :message="messageMenuState.message"
+      :x="messageMenuState.x"
+      :y="messageMenuState.y"
+      :align="messageMenuState.align"
+      :menu-flipped="menuFlipped"
+      @select="onQuickReaction"
+      @close="onMessageMenuClose"
     />
 
     <!-- Transfer target picker -->
@@ -1579,7 +1599,7 @@ function onCancelReply() {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: #F8FAFC;
+  background: var(--bg-soft);
 }
 
 .jm-messages__loading,
@@ -1810,6 +1830,104 @@ function onCancelReply() {
 .jm-thinking-bubble__close:hover {
   color: var(--text-1, #333);
   background: rgba(0, 0, 0, 0.06);
+}
+
+
+/* ==========================================================================
+   Agent Suggestions（完全对齐 module-4 .ai-suggest 视觉）
+   - 容器：浅紫渐变 + 1px dashed 蓝色边
+   - 每条：横向  icon | body(label + text) | 右上角关闭 ×
+   ========================================================================== */
+.tyn-agent-suggestions {
+  margin: 8px 20px 0;
+  padding: 10px 12px;
+  background: linear-gradient(90deg, var(--ai-faint), #fff);
+  border: 1px dashed var(--ai);
+  border-radius: var(--r);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.tyn-suggestion-item {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 24px 4px 0;     /* 右侧给关闭按钮留位 */
+  cursor: pointer;
+  width: 100%;
+  text-align: left;             /* 覆盖 <button> 默认居中 */
+  background: transparent;
+  border: 0;
+  font: inherit;
+  color: inherit;
+}
+
+.tyn-suggestion-item:hover .tyn-suggestion-item__close {
+  color: var(--text-2);
+}
+
+.tyn-suggestion-item__icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, var(--ai), #A78BFA);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.tyn-suggestion-item__icon svg {
+  width: 13px;
+  height: 13px;
+}
+
+.tyn-suggestion-item__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.tyn-suggestion-item__label {
+  font-size: 11px;
+  color: var(--ai);
+  font-weight: 600;
+  margin-bottom: 3px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tyn-suggestion-item__text {
+  font-size: 13px;
+  color: var(--text-1);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+/* 右上角关闭按钮 */
+.tyn-suggestion-item__close {
+  position: absolute;
+  top: 2px;
+  right: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  transition: var(--t-fast);
+  user-select: none;
+}
+
+.tyn-suggestion-item__close:hover {
+  background: var(--bg-mute);
+  color: var(--text-1);
 }
 
 @keyframes dot-bounce {

@@ -65,7 +65,7 @@ function onClick() {
   min-width: 240px;
   max-width: 320px;
   padding: 10px 12px;
-  background: var(var(--bg));
+  background: var(--bg);
   border: 1px solid var(--border-soft);
   border-radius: var(--r);
   text-align: left;

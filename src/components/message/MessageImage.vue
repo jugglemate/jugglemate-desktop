@@ -13,6 +13,11 @@ const props = defineProps({
   message: {
     type: Object,
     required: true
+  },
+  // 消息方向：true=收件人, false=发件人 —— 决定背景色
+  incoming: {
+    type: Boolean,
+    default: true
   }
 })
 
@@ -40,7 +45,7 @@ const fileName = computed(() => props.message?.content?.name || 'image')
 // so the 20px patch would be unused empty space at the bottom of every
 // image, showing the bubble's `--bg-root` background as a dark bar.
 // ---------------------------------------------------------------------------
-const MAX_W = 270
+const MAX_W = 240
 const MAX_H = 240
 
 const STYLE = computed(() => {
@@ -70,7 +75,7 @@ function onClick() {
 
 <template>
   <div
-    class="jm-msg-image"
+    :class="['jm-msg-image', incoming ? 'jm-msg-image--incoming' : 'jm-msg-image--outgoing']"
     :style="STYLE"
     :title="fileName"
     @click="onClick"
@@ -83,17 +88,26 @@ function onClick() {
 </template>
 
 <style scoped>
+/* 对齐 module-4.html 中 .msg .bubble .msg-image —— 240×240 缩略图
+   incoming: 浅底 + 8px padding 卡片感
+   outgoing: 透明 + 无 padding，直接铺到气泡 */
 .jm-msg-image {
   position: relative;
-  border-radius: var(--r);
+  border-radius: 8px;
   overflow: hidden;
   cursor: zoom-in;
-  background: var(var(--bg));
-  /* The img's intrinsic aspect ratio drives the box. We use
-     `inline-block` + `line-height: 0` so the container shrinks to fit
-     and the bottom of the <img> sits flush with the container. */
   display: inline-block;
   line-height: 0;
+}
+
+.jm-msg-image--incoming {
+  padding: 4px;
+  background: var(--bg-soft);
+}
+
+.jm-msg-image--outgoing {
+  padding: 0;
+  background: transparent;
 }
 
 .jm-msg-image img {

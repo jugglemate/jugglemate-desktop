@@ -146,7 +146,7 @@ watch(() => props.show, (val) => {
   max-height: 70vh;
   display: flex;
   flex-direction: column;
-  background: var(var(--bg));
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--r);
   box-shadow: var(--shadow-lg);
@@ -226,7 +226,7 @@ watch(() => props.show, (val) => {
 
 .jm-transfer-dialog__item:hover,
 .jm-transfer-dialog__item.is-selected {
-  background: var(--primary-hover);
+  background: var(--primary-soft);
 }
 
 .jm-transfer-dialog__check {

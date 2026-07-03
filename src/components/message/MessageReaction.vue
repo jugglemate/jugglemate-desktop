@@ -71,7 +71,7 @@ function onClick(reaction) {
   gap: 4px;
   padding: 2px 8px;
   border-radius: 12px;
-  background: var(var(--bg));
+  background: var(--bg);
   border: 1px solid var(--border-soft);
   color: var(--text-2);
   font-size: 11px;

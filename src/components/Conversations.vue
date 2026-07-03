@@ -151,7 +151,6 @@ function shortFormat(message) {
   if (typeof content === 'string') return content
   if (content.content !== undefined && content.content !== null) return String(content.content)
   if (content.text) return content.text
-  console.log('[ConversationList] -------------', message)
   if (message.type === 'image' || message.image) return '[图片]'
   if (message.type === 'voice' || message.voice) return '[语音]'
   if (message.type === 'video' || message.video) return '[视频]'
@@ -477,16 +476,15 @@ const sortedConversations = computed(() => {
 .conversations {
   display: flex;
   height: 100%;
-  width: 520px;            /* 200(filter) + 320(list) */
-  min-width: 520px;        /* 锁死 520，让 ChatMain 走 flex:1 */
+  min-width: 460px;        /* 锁死 520，让 ChatMain 走 flex:1 */
   flex-shrink: 0;
   background: var(--bg-soft);
 }
 
 /* ============== 左：过滤侧栏 ============== */
 .conv-filter {
-  width: 200px;
-  min-width: 200px;
+  /* width: 200px; */
+  min-width: 160px;
   background: var(--bg);
   border-right: 1px solid var(--border);
   overflow-y: auto;
@@ -596,9 +594,9 @@ const sortedConversations = computed(() => {
 
 /* ============== 右：会话列表 ============== */
 .conv-list-wrap {
-  width: 320px;           
-  min-width: 320px;
-  flex: 0 0 320px;
+  width: 300px;           
+  min-width: 300px;
+  flex: 0 0 300px;
   background: var(--bg);
   border-right: 1px solid var(--border);
   display: flex;

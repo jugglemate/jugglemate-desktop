@@ -1,6 +1,7 @@
 <script setup>
 // Ticket assign system notification.
-// Displayed as a centered pill-like bubble (no avatar, no sender).
+// Displayed as a centered muted pill (no avatar, no sender), matching the
+// visual language of MessageRecall / MessageTimeline system rows.
 // assign_type: 0 = self-claim, 1 = assigned by others.
 
 import { computed } from 'vue'
@@ -36,39 +37,28 @@ const text = computed(() => {
 </script>
 
 <template>
-  <div class="msg-ticket-assign">
-    <div class="msg-ticket-assign__bubble">
-      <span class="msg-ticket-assign__icon">💼</span>
-      <span class="msg-ticket-assign__text">{{ text }}</span>
-    </div>
+  <div class="jm-msg-ticket-assign">
+    <span class="jm-msg-ticket-assign__pill">{{ text }}</span>
   </div>
 </template>
 
 <style scoped>
-.msg-ticket-assign {
+.jm-msg-ticket-assign {
   display: flex;
   justify-content: center;
-  padding: 8px 0;
+  padding: 4px 0;
 }
 
-.msg-ticket-assign__bubble {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 16px;
-  background: #f5f5f5;
-  border-radius: 20px;
-  font-size: 13px;
-  color: #666;
+.jm-msg-ticket-assign__pill {
   max-width: 80%;
-}
-
-.msg-ticket-assign__icon {
-  font-size: 14px;
-  flex-shrink: 0;
-}
-
-.msg-ticket-assign__text {
-  line-height: 1.4;
+  padding: 2px 10px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-3);
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-sm);
+  word-break: break-word;
+  text-align: center;
 }
 </style>
