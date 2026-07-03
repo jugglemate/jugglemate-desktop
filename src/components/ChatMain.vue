@@ -198,12 +198,16 @@ const isCurrentGroup = computed(() => {
 // (driven by MainView's `suggestions`) does NOT trigger the banner — those
 // are two independent signals.
 const showTakeoverBanner = computed(
-  () => !isCurrentGroup.value && !!props.takenOverAgent
+  () => props.takenOverAgent
 )
-const takeoverBannerText = computed(() => {
-  if (props.takenOverAgent?.name) return `${props.takenOverAgent.name} 助手接管`
-  return '客服助手 接管中'
+// 接管条主标题 + 副标题（对齐 agent-floating 设计稿）
+const takeoverBannerTitle = computed(() => {
+  if (props.takenOverAgent?.name) return `${props.takenOverAgent.name} 正在自动回复`
+  return 'AI 助手 正在自动回复'
 })
+const takeoverBannerSub = computed(
+  () => '所有客户消息将由该 Agent 自动响应'
+)
 // Header status tip. Driven by *selection*, not 托管. The two states are
 // independent:
 //   - An Agent is selected (operator is writing in its voice) → red tip
@@ -212,11 +216,39 @@ const takeoverBannerText = computed(() => {
 // The 托管 button on the right side is what triggers the takeover banner;
 // it does not affect the tip. That keeps the tip meaningful even when no
 // 托管 is active.
-const takeoverTipText = computed(() => {
-  if (props.selectedAgent?.name) return `${props.selectedAgent.name} 正在协助回复`
+// --- Header agent-mode (3 状态) ---
+// human      人工自主回复（灰）—— 无 selectedAgent 也无 takenOverAgent
+// assist     AI 协助回复（主色蓝）—— selectedAgent 在场
+// auto       AI 托管中（橙渐变）—— takenOverAgent 在场
+// （autoMode prop 仍是源数据 0/1/2，takeover/selection 由对应 agent 对象决定）
+const currentMode = computed(() => {
+  if (props.takenOverAgent) return 'auto'
+  if (props.selectedAgent) return 'assist'
+  return 'human'
+})
+const modeText = computed(() => {
+  if (currentMode.value === 'auto') {
+    return props.takenOverAgent?.name
+      ? `${props.takenOverAgent.name} 正在托管`
+      : 'AI 托管中'
+  }
+  if (currentMode.value === 'assist') {
+    return props.selectedAgent?.name
+      ? `${props.selectedAgent.name} 正在协助回复`
+      : 'AI 协助回复'
+  }
   return '人工自主回复'
 })
-const isTipActive = computed(() => !!props.selectedAgent)
+
+// 三种 mode 对应的 svg icon
+const ICON_HUMAN = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>'
+const ICON_ASSIST = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v.5A3 3 0 0 0 6 8.5V9a3 3 0 0 0-3 3v0a3 3 0 0 0 3 3v3a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3v-3a3 3 0 0 0 3-3v0a3 3 0 0 0-3-3v-.5A3 3 0 0 0 15 5.5V5a3 3 0 0 0-3-3z"></path><circle cx="9" cy="13" r="1"></circle><circle cx="15" cy="13" r="1"></circle><path d="M9 17h6"></path></svg>'
+const ICON_AUTO = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"></rect><circle cx="12" cy="5" r="2"></circle><path d="M12 7v4"></path><line x1="8" y1="16" x2="8" y2="16"></line><line x1="16" y1="16" x2="16" y2="16"></line></svg>'
+const modeIconSvg = computed(() => {
+  if (currentMode.value === 'auto') return ICON_AUTO
+  if (currentMode.value === 'assist') return ICON_ASSIST
+  return ICON_HUMAN
+})
 
 const isTicket = computed(() => props.conversation?.isTicket === true)
 const isTicketUnassigned = computed(() => isTicket.value && props.ticket?.status === 0)
@@ -1279,27 +1311,42 @@ function onCancelReply() {
         <div class="tyn-chat-header__avatar">
           {{ isGroup ? (groupName || '群').charAt(0) : (conversation?.name || '?').charAt(0) }}
         </div>
-        <div>
+        <div class="tyn-chat-header__meta">
           <div class="tyn-chat-header__name">
             {{ isGroup ? groupName : (conversation?.name || '') }}
+            <span class="tyn-chat-header__platform-tag">
+              {{ conversation?.platform }}
+            </span>
           </div>
-          <div class="tyn-chat-header__platform">
-            {{
-              isGroup
-                ? `${groupAgentCount} 个 Agent 协作中`
-                : `${getPlatformLabel(conversation?.platform)} · ${peerTyping ? '对方正在输入...' : '在线'}`
-            }}
+          <div class="tyn-chat-header__sub">
+            <!-- 群聊：协作中 -->
+            <span v-if="isGroup" class="tyn-chat-header__sub-state">
+              <span class="tyn-chat-header__dot"></span>{{ groupAgentCount }} 个 Agent 协作中
+            </span>
+            <!-- 私聊：在线 / 正在输入中 二选一 -->
+            <template v-else>
+              <span v-if="!peerTyping" class="tyn-chat-header__sub-state">
+                <span class="tyn-chat-header__dot"></span>在线
+              </span>
+              <span v-else class="tyn-chat-header__sub-state tyn-chat-header__sub-state--typing">
+                <span class="tyn-chat-header__typing-dots" aria-hidden="true">
+                  <span></span><span></span><span></span>
+                </span>
+                正在输入中
+              </span>
+            </template>
           </div>
         </div>
       </div>
       <div class="tyn-chat-header__actions" v-if="!isGroup && !isTicket">
         <div
-          class="tyn-chat-header__takeover-tip"
-          :class="{ 'is-active': isTipActive }"
-          :title="takeoverTipText"
+          class="tyn-chat-header__agent-mode"
+          :data-mode="currentMode"
+          :title="modeText"
         >
-          <span class="tyn-chat-header__takeover-dot" aria-hidden="true"></span>
-          <span class="tyn-chat-header__takeover-text">{{ takeoverTipText }}</span>
+          <span class="tyn-chat-header__mode-icon" aria-hidden="true" v-html="modeIconSvg"></span>
+          <span class="tyn-chat-header__mode-dot"></span>
+          <span class="tyn-chat-header__mode-text">{{ modeText }}</span>
         </div>
       </div>
       <div class="tyn-chat-header__actions" v-if="isTicketUnassigned">
@@ -1313,13 +1360,20 @@ function onCancelReply() {
       </div>
     </div>
 
-    <!-- Takeover Banner -->
+    <!-- Takeover Banner —— AI 托管中提示条 (对齐 agent-floating 强提示) -->
     <div v-if="showTakeoverBanner" class="tyn-takeover-banner animate-slideDown">
-      <div class="tyn-takeover-banner__text">
-        <span class="tyn-takeover-banner__pulse"></span>
-        <span>{{ takeoverBannerText }}</span>
+      <div class="tyn-takeover-banner__icon" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"></path><rect x="2" y="8" width="20" height="12" rx="2"></rect><path d="M2 14h20M6 8v4M10 8v4M14 8v4M18 8v4"></path></svg>
       </div>
-      <button class="tyn-btn tyn-btn--sm tyn-btn--danger-outline" @click="onRevokeTakeover">
+      <div class="tyn-takeover-banner__body">
+        <div class="tyn-takeover-banner__title">
+          <span class="tyn-takeover-banner__pulse"></span>
+          <span>{{ takeoverBannerTitle }}</span>
+        </div>
+        <div class="tyn-takeover-banner__sub">{{ takeoverBannerSub }}</div>
+      </div>
+      <button class="tyn-takeover-banner__btn" @click="onRevokeTakeover">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
         收回控制
       </button>
     </div>
@@ -1360,9 +1414,13 @@ function onCancelReply() {
     </div>
 
     <!-- Pending Agent Suggestions -->
-    <div v-if="pendingSuggestions.length > 0" class="tyn-takeover-banner animate-slideDown" style="background: var(--surface-warning, #fffbeb); border-color: var(--border-warning, #fbbf24);">
-      <div class="tyn-takeover-banner__text">
-        <span>{{ pendingSuggestions.length }} 条大模型回复建议待处理</span>
+    <!-- Pending Agent Suggestions —— 复用基础类 + warning 修饰 -->
+    <div v-if="pendingSuggestions.length > 0" class="tyn-takeover-banner tyn-takeover-banner--warning animate-slideDown">
+      <div class="tyn-takeover-banner__body">
+        <div class="tyn-takeover-banner__title">
+          <span class="tyn-takeover-banner__pulse tyn-takeover-banner__pulse--warning"></span>
+          <span>{{ pendingSuggestions.length }} 条大模型回复建议待处理</span>
+        </div>
       </div>
     </div>
 

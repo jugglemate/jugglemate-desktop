@@ -127,15 +127,32 @@ export const VIEW = {
   MINE: 'mine',                 // 我的（tag = my_ticket）
   UNASSIGNED: 'unassigned',     // 待分配（tag != assigned）
   AI_TAKEOVER: 'ai_takeover',   // AI 托管中 = 接管中（im.isInTakeoverTag）
-  // TAKEOVER: 'takeover',         // alias，等价 AI_TAKEOVER
   ALL: 'all'                    // 全部
 }
 
-// 视图展示元信息。label 给 UI 看，key 跟 SESSION_FILTER / VIEW 取值对齐。
+// 视图展示元信息。label 给 UI 看，icon 是 24x24 stroke 风格 SVG path 字符串。
 // 视图 4 个：我的 / 待分配 / AI 托管中 / 全部。
+//
+// 视觉基线：1.6 stroke-width、stroke-linecap=round、stroke-linejoin=round、currentColor
+// ——和 nav-rail 里现有图标的风格保持一致。
 export const VIEW_META = {
-  [VIEW.MINE]:        { label: '我的',       order: 0 },
-  [VIEW.UNASSIGNED]:  { label: '待分配',     order: 1 },
-  [VIEW.AI_TAKEOVER]: { label: 'AI 托管中',  order: 2 },
-  [VIEW.ALL]:         { label: '全部',       order: 4 }
+  [VIEW.MINE]: {
+    label: '我的',
+    order: 0,
+    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"></polyline><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path></svg>'  },
+  [VIEW.UNASSIGNED]: {
+    label: '待分配',
+    order: 1,
+    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="23" y1="11" x2="17" y2="11"></line></svg>'  },
+  [VIEW.AI_TAKEOVER]: {
+    label: 'AI 托管中',
+    order: 2,
+    // 机器人头 + 身体：圆角方脸 + 眼睛 + 天线 + 底盘——明确传达"AI 在自动应答"
+    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"></rect><circle cx="12" cy="5" r="2"></circle><path d="M12 7v4"></path></svg>'  },
+  [VIEW.ALL]: {
+    label: '全部',
+    order: 3,
+    // 三个层叠的圆点 / 列表：左侧 3 个不同状态的小圆，右侧 2 条横线，传达"所有会话"
+    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6"  r="1.4" fill="currentColor" stroke="none"/><circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="5" cy="18" r="1.4" fill="currentColor" stroke="none"/><line x1="10" y1="6"  x2="20" y2="6"/><line x1="10" y1="12" x2="20" y2="12"/><line x1="10" y1="18" x2="20" y2="18"/></svg>'
+  }
 }

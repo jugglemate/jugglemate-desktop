@@ -1,7 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import MainView from '../views/MainView.vue'
 import LoginView from '../views/LoginView.vue'
-import AgentAdmin from '../views/AgentAdmin.vue'
 import userService from '../services/user'
 
 const router = createRouter({

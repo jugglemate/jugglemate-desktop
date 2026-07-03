@@ -1,423 +1,360 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+/**
+ * AgentPanel — 客户侧栏（module-5）
+ * ------------------------------------------------------------------
+ * Props
+ *   agents           : 从 MainView 传进来的 agent 列表（已由 AGENT_MYBOTS 加载）
+ *   selectedAgentId  : 当前选中的 agent（写作用）
+ *   mode             : 'collaborative' | 'managed'（agent 面板模式）
+ *   hostedAgentId    : 当前会话被哪个 agent 托管
+ *   customer         : 客户信息（来自 currentConversation 派生）；不传则用 mock
+ * Emits
+ *   select-agent     : 选中 agent（写）
+ *   update:mode      : 切换协同/托管
+ *   host-agent       : 托管当前 agent (auto_mode → 2)
+ *   unhost-agent     : 取消当前托管 (auto_mode → 1)
+ */
+import { ref, computed } from 'vue'
+import Avatar from './Avatar.vue'
 
 const props = defineProps({
-  agents: {
-    type: Array,
-    default: () => []
-  },
-  selectedAgentId: {
-    type: [String, Number],
-    default: null
-  },
-  mode: {
-    type: String,
-    default: 'collaborative'
-  },
-  hostedAgentId: {
-    type: [String, Number],
-    default: null
-  }
+  agents: { type: Array, default: () => [] },
+  selectedAgentId: { type: [String, Number], default: null },
+  mode: { type: String, default: 'off' },
+  hostedAgentId: { type: [String, Number], default: null },
+  customer: { type: Object, default: null }
 })
 
 const emit = defineEmits([
+  // 列表行点击：通知 chat 切换当前写作 agent（不改变 mode）
   'select-agent',
-  'update:mode',
-  'toggle-host'
+  // 列表行"托管"按钮：把会话托管给这个 agent（auto_mode 推到 2）
+  'host-agent',
+  // 列表行"取消托管"按钮：清掉当前会话的托管（auto_mode 回到 1）
+  'unhost-agent',
 ])
 
-const dropdownOpen = ref(false)
-const dropdownRef = ref(null)
+// agents / customer 都由 MainView 通过 props 传入。
+//   agents  来源：MainView loadAgents() → AGENT_MYBOTS
+//   customer 来源：MainView currentCustomerInfo（从 currentConversation 派生）
+// 数据未就绪时显示空态，不再在组件内做 mock 兜底（mock 已统一放到 MainView 侧）。
+const agentList = computed(() => props.agents || [])
+const customer = computed(() => props.customer || null)
 
-const selectedAgent = computed(() =>
-  props.agents.find(a => a.id === props.selectedAgentId) || null
-)
+// ---------------- Tabs（当前只实现 "agent 列表"，其余 tab 留空面板） ----------------
+const tabs = [
+  { key: 'agents', label: 'agent 列表' }
+]
+const activeTab = ref('agents')
 
-const displayLabel = computed(() =>
-  selectedAgent.value ? selectedAgent.value.name : '不使用'
-)
+console.log('AgentPanel.vue: agentList', agentList.value, 'customer', customer.value)
 
-function toggleDropdown() {
-  dropdownOpen.value = !dropdownOpen.value
+
+function onClickAgent(agent) {
+  if (!agent) return
+  emit('select-agent', agent.id)
 }
 
-function selectOption(agentOrNull) {
-  dropdownOpen.value = false
-  if (agentOrNull === null) {
-    emit('select-agent', null)
-  } else {
-    emit('select-agent', agentOrNull.id)
-  }
+function onHostClick(agent, e) {
+  e.stopPropagation()
+  emit('host-agent', agent.id)
 }
 
-function switchMode(mode) {
-  emit('update:mode', mode)
+function onUnhostClick(e) {
+  e.stopPropagation()
+  emit('unhost-agent')
 }
-
-function onClickOutside(e) {
-  if (dropdownRef.value && !dropdownRef.value.contains(e.target)) {
-    dropdownOpen.value = false
-  }
-}
-
-onMounted(() => { document.addEventListener('click', onClickOutside) })
-onUnmounted(() => { document.removeEventListener('click', onClickOutside) })
 </script>
 
 <template>
-  <aside class="agent-panel">
-    <!-- 标题 -->
-    <!-- <div class="agent-panel__header">
-      <div class="agent-panel__header-icon">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
-          <circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.5"/>
-          <path d="M5 20c0-4 3.1-7 7-7s7 3 7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-          <rect x="13" y="2" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.2"/>
-          <path d="M16 4v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
-          <circle cx="8" cy="13" r="1" fill="currentColor"/>
-          <circle cx="12" cy="13" r="1" fill="currentColor"/>
-        </svg>
-      </div>
-      <span class="agent-panel__header-title">智能 Agent 列表</span>
-    </div> -->
-
-    <!-- 下拉选择器 -->
-    <div class="agent-panel__field" ref="dropdownRef">
-      <label class="agent-panel__label">当前使用Agent</label>
-      <button
-        type="button"
-        class="agent-panel__trigger"
-        :class="{ 'is-open': dropdownOpen }"
-        @click="toggleDropdown"
+  <aside class="customer-side">
+    <!-- Tabs -->
+    <div class="side-tabs">
+      <div
+        v-for="t in tabs"
+        :key="t.key"
+        class="side-tab"
+        :class="{ active: activeTab === t.key }"
+        @click="activeTab = t.key"
       >
-        <span>{{ displayLabel }}</span>
-        <svg class="agent-panel__chevron" :class="{ 'is-open': dropdownOpen }" viewBox="0 0 16 16" width="16" height="16" fill="none">
-          <path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
-
-      <div v-if="dropdownOpen" class="agent-panel__dropdown">
-        <div
-          class="agent-panel__dropdown-option"
-          :class="{ 'is-active': !selectedAgentId }"
-          @click="selectOption(null)"
-        >
-          <span>不使用</span>
-          <svg v-if="!selectedAgentId" class="agent-panel__dropdown-check" viewBox="0 0 16 16" width="14" height="14" fill="none">
-            <path d="M3 8l3.5 3.5L13 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </div>
-        <div class="agent-panel__dropdown-divider" />
-        <div
-          v-for="agent in agents"
-          :key="agent.id"
-          class="agent-panel__dropdown-option"
-          :class="{ 'is-active': agent.id === selectedAgentId }"
-          @click="selectOption(agent)"
-        >
-          <span class="agent-panel__dropdown-avatar">{{ agent.name?.charAt(0) || 'A' }}</span>
-          <span>{{ agent.name }}</span>
-          <svg v-if="agent.id === selectedAgentId" class="agent-panel__dropdown-check" viewBox="0 0 16 16" width="14" height="14" fill="none">
-            <path d="M3 8l3.5 3.5L13 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </div>
-        <div v-if="agents.length === 0" class="agent-panel__dropdown-empty">暂无 Agent</div>
+        {{ t.label }}
       </div>
     </div>
 
-    <!-- AI辅助模式：仅选中 agent 后展示 -->
-    <template v-if="selectedAgentId">
-      <div class="agent-panel__divider" />
-      <div class="agent-panel__mode">
-        <div class="agent-panel__mode-title">AI辅助模式</div>
-
-        <!-- 协同模式卡片 -->
+    <!-- Body -->
+    <div class="side-body">
+      <div v-if="activeTab === 'agents'" class="agent-list">
         <div
-          class="agent-panel__mode-card"
-          :class="{ 'is-active': mode === 'collaborative' }"
-          @click="switchMode('collaborative')"
+          v-for="agent in agentList"
+          :key="agent.id"
+          class="agent-item"
+          :class="{
+            active:  agent.id === selectedAgentId,
+            hosted:  agent.id === hostedAgentId,
+            disabled: agent.enabled === false
+          }"
+          @click="onClickAgent(agent)"
         >
-          <div class="agent-panel__mode-card-icon collaborative">
-            <svg viewBox="0 0 20 20" width="18" height="18" fill="none">
-              <path d="M7 10l2 2 4-4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-              <circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.5"/>
-            </svg>
+          <div class="agent-avatar">
+            <Avatar
+              :name="agent.name"
+              :avatar="agent.emoji"
+              size="md"
+            />
           </div>
-          <div class="agent-panel__mode-card-text">
-            <div class="agent-panel__mode-card-name">协同模式</div>
-            <div class="agent-panel__mode-card-desc">AI提供建议，人工决策</div>
+          <div class="agent-info">
+            <div class="agent-name">{{ agent.name }}</div>
           </div>
+          <button
+            v-if="agent.id === hostedAgentId"
+            type="button"
+            class="agent-act agent-act--on"
+            title="取消托管"
+            @click="onUnhostClick($event)"
+          >取消托管</button>
+          <button
+            v-else
+            type="button"
+            class="agent-act"
+            :disabled="agent.enabled === false"
+            :title="agent.enabled === false ? '该 agent 未启用' : '将当前会话托管给此 agent'"
+            @click="onHostClick(agent, $event)"
+          >托管</button>
         </div>
 
-        <!-- 托管模式卡片 -->
-        <div
-          class="agent-panel__mode-card"
-          :class="{ 'is-active': mode === 'managed' }"
-          @click="switchMode('managed')"
-        >
-          <div class="agent-panel__mode-card-icon managed">
-            <svg viewBox="0 0 20 20" width="18" height="18" fill="none">
-              <circle cx="10" cy="10" r="6" stroke="currentColor" stroke-width="1.5"/>
-              <path d="M10 7.5v3l2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
-          </div>
-          <div class="agent-panel__mode-card-text">
-            <div class="agent-panel__mode-card-name">托管模式</div>
-            <div class="agent-panel__mode-card-desc">AI自动处理常规问题</div>
-          </div>
-        </div>
+        <div v-if="agentList.length === 0" class="empty">暂无 Agent</div>
       </div>
-    </template>
+    </div>
   </aside>
 </template>
 
 <style scoped>
-.agent-panel {
-  width: 288px;
-  min-width: 288px;
-  height: calc(100vh - 20px);
-  margin: 10px 10px 10px 0;
-  background: #FFFFFF;
-  border-radius: var(--r);
+/* ============== 容器 ============== */
+.customer-side {
+  width: 340px;
+  min-width: 340px;
+  flex-shrink: 0;
+  height: 100vh;
+  background: var(--bg);
+  border-radius: var(--r-lg);
   display: flex;
   flex-direction: column;
-  overflow: visible;
-  padding: 24px 20px;
+  overflow: hidden;
   box-sizing: border-box;
 }
 
-/* ---- 标题 ---- */
-.agent-panel__header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 24px;
-}
-
-.agent-panel__header-icon {
-  color: #4A90E2;
-  display: flex;
-  align-items: center;
-}
-
-.agent-panel__header-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #1A202C;
-}
-
-/* ---- 下拉字段 ---- */
-.agent-panel__field {
-  position: relative;
-}
-
-.agent-panel__label {
-  display: block;
-  margin-bottom: 8px;
-  line-height: 1;
-  font-size: 14px;
-  font-weight: 600;
-  color: #333333;
-}
-
-.agent-panel__trigger {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 40px;
-  padding: 0 12px 0 14px;
-  background: #FFFFFF;
-  border: 1px solid #E4E7EB;
-  border-radius: 6px;
-  font-size: 14px;
-  color: #1A202C;
-  cursor: pointer;
-  transition: border-color 150ms ease;
-  font-family: inherit;
-}
-
-.agent-panel__trigger:hover {
-  border-color: #CBD0D8;
-}
-
-.agent-panel__trigger.is-open {
-  border-color: #4A90E2;
-  box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.12);
-}
-
-.agent-panel__chevron {
-  color: #B0B8C1;
-  flex-shrink: 0;
-  transition: transform 180ms ease;
-}
-
-.agent-panel__chevron.is-open {
-  transform: rotate(180deg);
-  color: #4A90E2;
-}
-
-/* ---- 下拉菜单 ---- */
-.agent-panel__dropdown {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: calc(100% + 4px);
-  background: #FFFFFF;
-  border: 1px solid #E4E7EB;
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.04);
-  padding: 6px;
-  z-index: 100;
-  max-height: 260px;
-  overflow-y: auto;
-}
-
-.agent-panel__dropdown-option {
+/* ============== 头部：客户 ============== */
+.side-head {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-soft);
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 9px 10px;
-  border-radius: 7px;
-  cursor: pointer;
+  flex-shrink: 0;
+}
+.side-head .avatar {
+  position: relative;
+  flex-shrink: 0;
+}
+.side-head .avatar .plat-dot {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+}
+.side-head .meta { flex: 1; min-width: 0; }
+.side-head .name {
   font-size: 14px;
-  color: #333333;
-  transition: background 120ms ease;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-1);
+  line-height: 1.2;
 }
-
-.agent-panel__dropdown-option:hover {
-  background: #F6F8FB;
+.side-head .name .unread-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+  display: inline-block;
 }
-
-.agent-panel__dropdown-option.is-active {
-  background: #EEF4FD;
-  color: #1A202C;
+.side-head .sub {
+  font-size: 11px;
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
 }
-
-.agent-panel__dropdown-avatar {
+.side-head .more {
   width: 28px;
   height: 28px;
-  border-radius: 50%;
-  background: #B3D9F7;
-  color: #FFFFFF;
-  font-size: 12px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.agent-panel__dropdown-check {
-  color: #4A90E2;
-  flex-shrink: 0;
-  margin-left: auto;
-}
-
-.agent-panel__dropdown-divider {
-  height: 1px;
-  background: #F0F2F5;
-  margin: 4px 6px;
-}
-
-.agent-panel__dropdown-empty {
-  padding: 16px;
-  text-align: center;
-  font-size: 13px;
-  color: #A0AEC0;
-}
-
-/* ---- 分隔线 ---- */
-.agent-panel__divider {
-  height: 1px;
-  background: #E8ECF2;
-  margin: 24px 0;
-}
-
-/* ---- AI辅助模式 ---- */
-.agent-panel__mode {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.agent-panel__mode-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #333333;
-  margin-bottom: 2px;
-}
-
-/* 模式卡片 */
-.agent-panel__mode-card {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 16px 14px;
-  background: #FFFFFF;
-  border: 1.5px solid #EAEDF2;
-  border-radius: 12px;
+  color: var(--text-3);
+  border: 0;
+  background: transparent;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
   cursor: pointer;
-  transition: all 150ms ease;
+  transition: var(--t-fast);
 }
+.side-head .more:hover { background: var(--bg-mute); color: var(--text-1); }
+.side-head .more svg { width: 16px; height: 16px; }
 
-.agent-panel__mode-card:hover {
-  border-color: #D0D6E0;
-}
-
-.agent-panel__mode-card.is-active {
-  background: #EEF4FD;
-  border-color: #4A90E2;
-}
-
-.agent-panel__mode-card-icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
+/* ============== Tabs ============== */
+.side-tabs {
   display: flex;
-  align-items: center;
-  justify-content: center;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
   flex-shrink: 0;
-  transition: background 150ms ease;
+}
+.side-tab {
+  padding: 11px 14px;
+  font-size: 13px;
+  color: var(--text-2);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: var(--t-fast);
+  position: relative;
+  user-select: none;
+}
+.side-tab:hover { color: var(--text-1); }
+.side-tab.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  font-weight: 500;
 }
 
-.agent-panel__mode-card-icon.collaborative {
-  background: #E8F0FE;
-  color: #4A90E2;
+/* ============== Body ============== */
+.side-body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+.placeholder-pane {
+  padding: 40px 16px;
+  text-align: center;
+  color: var(--text-3);
+  font-size: 12px;
 }
 
-.agent-panel__mode-card.is-active .agent-panel__mode-card-icon.collaborative {
-  background: #4A90E2;
-  color: #FFFFFF;
-}
-
-.agent-panel__mode-card-icon.managed {
-  background: #EEF2F8;
-  color: #6B95D1;
-}
-
-.agent-panel__mode-card.is-active .agent-panel__mode-card-icon.managed {
-  background: #4A90E2;
-  color: #FFFFFF;
-}
-
-.agent-panel__mode-card-text {
+/* ============== Agent 列表 ============== */
+.agent-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  padding: 4px 0;
+}
+.agent-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: var(--t-fast);
+  background: var(--bg);
+  border-bottom: 1px solid var(--border-soft);
+}
+.agent-item:hover {
+  background: var(--bg-soft);
+}
+.agent-item.active {
+  background: var(--primary-faint);
+}
+.agent-item.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--primary);
+}
+.agent-item.disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.agent-item.disabled .agent-act {
+  cursor: not-allowed;
+}
+
+.agent-avatar {
+  position: relative;
+  flex-shrink: 0;
+}
+.agent-info {
+  flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
-
-.agent-panel__mode-card-name {
-  font-size: 15px;
-  font-weight: 600;
-  color: #1A202C;
+.agent-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-1);
   line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-item.active .agent-name {
+  font-weight: 600;
 }
 
-.agent-panel__mode-card-desc {
+/* 右侧托管按钮（行内小按钮） */
+.agent-act {
+  flex-shrink: 0;
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: var(--t-fast);
+  font-family: inherit;
+}
+/* 取消托管按钮（已托管态）：静态 = 浅主色底 + 主色字 */
+.agent-act--on {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+/* 取消托管按钮 hover：明确视觉反馈——底色加深 + 文字变白 + 红边。
+   之前的实现是单纯把底色加深、文字变白，但 .agent-act:hover 的 color: var(--primary)
+   会以更高优先级把字改回主色（一个 class 命中 vs 两个 class 命中，
+   但顺序上 .agent-act:hover:not(:disabled) 写在前面导致 :hover 状态颜色反复），
+   视觉上就像"文字和背景撞色"。这里改用直接覆盖 + 更强的边框/字色对比。 */
+.agent-act--on:hover {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+  color: #fff;
+}
+.agent-act--on:active {
+  background: var(--primary-active);
+  border-color: var(--primary-active);
+}
+
+/* 普通"托管"按钮（非 --on）：hover 时给浅主色底 + 主色字 + 主色边 */
+.agent-act:not(.agent-act--on):hover:not(:disabled) {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.agent-act:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.empty {
+  padding: 40px 16px;
+  text-align: center;
+  color: var(--text-3);
   font-size: 12px;
-  color: #8A94A6;
-  line-height: 1.4;
 }
 </style>

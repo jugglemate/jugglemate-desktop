@@ -105,6 +105,11 @@ function submit() {
 function onAttachClick() {
   fileInput.value?.click()
 }
+// 工具栏占位 —— 仅 attach 真正触发文件选择，其他先打 noop 等待后续接入
+function onEmojiClick() { /* TODO: emoji picker */ }
+function onImageClick() { onAttachClick() }
+function onVoiceClick() { /* TODO: voice input */ }
+function onQuickReplyClick() { /* TODO: quick replies */ }
 
 function onFileChange(e) {
   const file = e.target.files?.[0]
@@ -117,116 +122,111 @@ function onFileChange(e) {
 
 <template>
   <div class="jm-sender">
-    <button
-      class="jm-sender__icon-btn"
-      type="button"
-      :disabled="disabled"
-      :title="'发送图片或文件'"
-      @click="onAttachClick"
-    >
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#909399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
-      </svg>
-    </button>
-    <input
-      ref="fileInput"
-      class="jm-sender__file-input"
-      type="file"
-      :accept="accept"
-      @change="onFileChange"
-    />
-    <textarea
-      ref="textareaRef"
-      class="jm-sender__input"
-      :placeholder="placeholder"
-      :value="text"
-      :disabled="disabled"
-      rows="1"
-      @input="onInput"
-      @keydown="onKeydown"
-      @focus="emit('focus')"
-      @blur="emit('blur')"
-    ></textarea>
-    <button
-      class="jm-sender__btn"
-      :disabled="disabled || sendDisabled || !text.trim()"
-      type="button"
-      @click="onSendClick"
-    >
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="22" y1="2" x2="11" y2="13"/>
-        <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-      </svg>
-    </button>
+    <div class="jm-sender__input-wrap">
+      <textarea
+        ref="textareaRef"
+        class="jm-sender__input"
+        :placeholder="placeholder"
+        :value="text"
+        :disabled="disabled"
+        rows="1"
+        @input="onInput"
+        @keydown="onKeydown"
+        @focus="emit('focus')"
+        @blur="emit('blur')"
+      ></textarea>
+      <div class="jm-sender__bar">
+        <div class="jm-sender__tools">
+          <!-- <button
+            class="jm-sender__tool-btn"
+            type="button"
+            :disabled="disabled"
+            title="表情"
+            @click="onEmojiClick"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+          </button> -->
+          <button
+            class="jm-sender__tool-btn"
+            type="button"
+            :disabled="disabled"
+            title="发送图片或文件"
+            @click="onAttachClick"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.4 11-9.2 9.2a5 5 0 1 1-7-7L13.5 4.5a3.5 3.5 0 0 1 5 5L9.7 18.3a2 2 0 1 1-2.8-2.8l8.5-8.5"/></svg>
+          </button>
+          <button
+            class="jm-sender__tool-btn"
+            type="button"
+            :disabled="disabled"
+            title="图片"
+            @click="onImageClick"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>
+          </button>
+        </div>
+        <input
+          ref="fileInput"
+          class="jm-sender__file-input"
+          type="file"
+          :accept="accept"
+          @change="onFileChange"
+        />
+        <button
+          class="jm-sender__send"
+          :disabled="disabled || sendDisabled || !text.trim()"
+          type="button"
+          @click="onSendClick"
+        >发送</button>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
+/* 对齐 aichat-agent-console.html 中 .composer 设计稿
+   容器 10/20/14 上下内边距 + 白底 + 无圆角无顶边（容器）*/
 .jm-sender {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  padding: 12px 20px;
-  border-top: 1px solid #F0F2F5;
-  background: #FFFFFF;
-  flex-shrink: 0;
-  border-bottom-left-radius: var(--r-lg);
-  border-bottom-right-radius: var(--r-lg);
-}
-
-.jm-sender__icon-btn {
-  width: 48px;
-  height: 48px;
-  border-radius: 8px;
-  background: transparent;
-  border: 1px solid #E1E8F0;
-  cursor: pointer;
-  transition: all var(--t-fast);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  padding: 10px 20px 14px;
+  background: var(--bg);
   flex-shrink: 0;
 }
 
-.jm-sender__icon-btn:hover:not(:disabled) {
-  background: #F8FAFC;
-  border-color: #6B95D1;
+/* 输入框外层 —— 边框、圆角、聚焦态主色边框、bg-soft 底 */
+.jm-sender__input-wrap {
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--bg-soft);
+  transition: var(--t-fast);
 }
 
-.jm-sender__icon-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.jm-sender__input-wrap:focus-within {
+  border-color: var(--primary);
+  background: #fff;
 }
 
-.jm-sender__file-input {
-  display: none;
-}
-
+/* textarea 自身 —— 透明，撑开父容器宽度 */
 .jm-sender__input {
-  flex: 1;
-  min-height: 48px;
-  max-height: 200px;
-  background: #FFFFFF;
-  border: 1px solid #E1E8F0;
-  border-radius: 12px;
-  padding: 12px 16px;
-  color: #333333;
-  font-family: var(--font-sans);
+  width: 100%;
+  border: 0;
+  background: transparent;
   font-size: 14px;
   line-height: 1.5;
-  outline: none;
+  min-height: 24px;
+  max-height: 120px;
   resize: none;
-  overflow-y: auto;
-  transition: border-color var(--t-fast), box-shadow var(--t-fast);
-}
-
-.jm-sender__input:focus {
-  border-color: #6B95D1;
-  box-shadow: 0 0 0 2px rgba(107, 149, 209, 0.15);
+  color: var(--text-1);
+  padding: 4px 6px;
+  font-family: inherit;
+  outline: none;
 }
 
 .jm-sender__input::placeholder {
-  color: #B0B7C3;
+  color: var(--text-3);
 }
 
 .jm-sender__input:disabled {
@@ -234,26 +234,70 @@ function onFileChange(e) {
   cursor: not-allowed;
 }
 
-.jm-sender__btn {
-  width: 48px;
-  height: 48px;
-  border-radius: 8px;
-  background: #6B95D1;
-  border: none;
-  cursor: pointer;
-  transition: all var(--t-fast);
+/* 工具栏 + 发送 所在行 */
+.jm-sender__bar {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
+  padding: 0 2px;
 }
 
-.jm-sender__btn:hover:not(:disabled) {
-  background: #5A84BC;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+.jm-sender__tools {
+  display: flex;
+  gap: 2px;
 }
 
-.jm-sender__btn:disabled {
+.jm-sender__tool-btn {
+  width: 28px;
+  height: 28px;
+  color: var(--text-3);
+  border-radius: 6px;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: var(--t-fast);
+}
+
+.jm-sender__tool-btn:hover:not(:disabled) {
+  background: var(--bg-mute);
+  color: var(--text-1);
+}
+
+.jm-sender__tool-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.jm-sender__tool-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+.jm-sender__file-input {
+  display: none;
+}
+
+/* 发送按钮 —— 文字胶囊，对齐设计稿 */
+.jm-sender__send {
+  padding: 6px 18px;
+  background: var(--primary);
+  color: #fff;
+  border: 0;
+  border-radius: var(--r);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: var(--t-fast);
+}
+
+.jm-sender__send:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+
+.jm-sender__send:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }

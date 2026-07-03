@@ -65,13 +65,13 @@ const platformItems = computed(() =>
 
 // 各 filter 下的未读/待办数量（MainView 之前就这么占位）
 const filterCounts = reactive({
-  [VIEW.MINE]: 0,
-  [VIEW.UNASSIGNED]: 0,
-  [VIEW.AI_TAKEOVER]: 0,
-  [VIEW.ALL]: 0,
-  [PLATFORM.WEB]: 0,
-  [PLATFORM.TELEGRAM]: 0,
-  [PLATFORM.JUGGLECHAT]: 0
+  [VIEW.MINE]: 10,
+  [VIEW.UNASSIGNED]: 10,
+  [VIEW.AI_TAKEOVER]: 10,
+  [VIEW.ALL]: 10,
+  [PLATFORM.WEB]: 10,
+  [PLATFORM.TELEGRAM]: 10,
+  [PLATFORM.JUGGLECHAT]: 10
 })
 
 function selectView(key) {
@@ -151,12 +151,13 @@ function shortFormat(message) {
   if (typeof content === 'string') return content
   if (content.content !== undefined && content.content !== null) return String(content.content)
   if (content.text) return content.text
-  if (content.type === 'image' || content.image) return '[图片]'
-  if (content.type === 'voice' || content.voice) return '[语音]'
-  if (content.type === 'video' || content.video) return '[视频]'
-  if (content.type === 'file' || content.file) return '[文件]'
-  if (content.type === 'location' || content.location) return '[位置]'
-  if (content.type === 'card' || content.card) return '[名片]'
+  console.log('[ConversationList] -------------', message)
+  if (message.type === 'image' || message.image) return '[图片]'
+  if (message.type === 'voice' || message.voice) return '[语音]'
+  if (message.type === 'video' || message.video) return '[视频]'
+  if (message.type === 'file' || message.file) return '[文件]'
+  if (message.type === 'location' || message.location) return '[位置]'
+  if (message.type === 'card' || message.card) return '[名片]'
   return '[消息]'
 }
 
@@ -360,6 +361,12 @@ const sortedConversations = computed(() => {
           :class="{ 'conv-filter__item--active': currentView === it.key }"
           @click="selectView(it.key)"
         >
+          <span
+            v-if="it.icon"
+            class="conv-filter__item-icon"
+            v-html="it.icon"
+            aria-hidden="true"
+          ></span>
           <span class="conv-filter__item-label">{{ it.label }}</span>
           <span
             v-if="filterCounts[it.key]"
@@ -470,8 +477,8 @@ const sortedConversations = computed(() => {
 .conversations {
   display: flex;
   height: 100%;
-  width: 540px;            /* 200(filter) + 340(list) */
-  min-width: 540px;        /* 锁死 540，让 ChatMain 走 flex:1 */
+  width: 520px;            /* 200(filter) + 320(list) */
+  min-width: 520px;        /* 锁死 520，让 ChatMain 走 flex:1 */
   flex-shrink: 0;
   background: var(--bg-soft);
 }
@@ -513,6 +520,29 @@ const sortedConversations = computed(() => {
   cursor: pointer;
   text-align: left;
   transition: var(--t-fast);
+}
+.conv-filter__item-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+  opacity: 0.85;
+}
+.conv-filter__item-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.conv-filter__item--active .conv-filter__item-icon {
+  opacity: 1;
 }
 .conv-filter__item::before {
   content: '';
@@ -566,9 +596,9 @@ const sortedConversations = computed(() => {
 
 /* ============== 右：会话列表 ============== */
 .conv-list-wrap {
-  width: 340px;           
-  min-width: 340px;
-  flex: 0 0 340px;
+  width: 320px;           
+  min-width: 320px;
+  flex: 0 0 320px;
   background: var(--bg);
   border-right: 1px solid var(--border);
   display: flex;
@@ -576,7 +606,7 @@ const sortedConversations = computed(() => {
 }
 
 .conv-list-head {
-  padding: 12px 16px;
+  padding: 14px 16px 15px;
   border-bottom: 1px solid var(--border-soft);
   display: flex;
   align-items: center;

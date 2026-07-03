@@ -489,6 +489,7 @@ function msgShortFormat(message) {
     }
     if (typeof content === 'string') return content
   }
+  console.log('[ConversationList] -------------', name)
   if (name === MessageType.IMAGE) return '[图片]'
   if (name === MessageType.VOICE) return '[语音]'
   if (name === MessageType.VIDEO) return '[视频]'

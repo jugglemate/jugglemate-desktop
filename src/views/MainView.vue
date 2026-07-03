@@ -3,7 +3,6 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import NavSidebar from '../components/NavSidebar.vue'
 import Conversations from '../components/Conversations.vue'
-import TicketList from '../components/TicketList.vue'
 import ChatMain from '../components/ChatMain.vue'
 import AgentPanel from '../components/AgentPanel.vue'
 import UserDrawer from '../components/UserDrawer.vue'
@@ -14,7 +13,6 @@ import im from '../common/im'
 import userService from '../services/user'
 import { SERVER_PATH, get, post } from '../services/api'
 import { MSG_NAME, SESSION_FILTER } from '../common/enum'
-import toast from '../common/toast'
 
 const router = useRouter()
 const ticketListRef = ref(null)
@@ -96,7 +94,6 @@ onMounted(async () => {
 const currentView = ref('conversation') // 'conversation' | 'group'
 const currentConvoId = ref(null)
 const currentConversation = ref(null)
-const currentGroupId = ref(null)
 // Two independent Agent-related states. Keep them separate on purpose:
 //   - selectedAgentId: which Agent's style the operator wants to write in.
 //     Drives the suggestion area (the single reply card shown above the
@@ -113,7 +110,6 @@ const currentGroupId = ref(null)
 // without handing the conversation over, and you can hand over a
 // conversation to an Agent without necessarily using its reply as a draft.
 const selectedAgentId = ref(null)
-const agentPanelCollapsed = ref(false)
 const takeoverByConv = reactive(new Map())  // Map<convKey, { conversation, agentId }>
 
 // Session state — created/looked-up when conversation is selected,
@@ -128,10 +124,14 @@ const selectedAgent = computed(
 )
 // 当前会话的 AI 辅助模式：0=不使用, 1=协同模式, 2=托管模式
 const autoMode = computed(() => currentSession.value?.auto_mode ?? 0)
-// Agent 面板模式，与 autoMode 联动（0→隐藏, 1→协同, 2→托管）
+// Agent 面板模式：'off' | 'collaborative' | 'managed'
+//   off           = 人工回复（不显式标注，列表行无 active 态）
+//   collaborative = 协助模式（agent 给出建议，运营手发）
+//   managed       = 托管模式（agent 自动接管会话）
 const agentPanelMode = computed(() => {
   if (autoMode.value === 2) return 'managed'
-  return 'collaborative'
+  if (autoMode.value === 1) return 'collaborative'
+  return 'off'
 })
 const takenOverAgent = computed(() => {
   if (!currentConversation.value) return null
@@ -144,20 +144,73 @@ const takenOverAgent = computed(() => {
 // Same lookup as takenOverAgent, but returns the raw id — used to drive
 // the AgentPanel's "hosted" indicator (which Agent row gets the 托管中
 // pill), which expects an id, not an agent object.
+// 显式 ref + 触发器，绕开 reactive Map 反应性可能的边界情况。
+//   takeoverVersion 在 setTakeover / clearTakeover / 切会话时 ++，让 computed 必然重算。
+//   currentTakenOverAgentId 仍然只读 takeoverByConv，但版本号变化是依赖。
+const takeoverVersion = ref(0)
 const currentTakenOverAgentId = computed(() => {
+  // 把 takeoverVersion 放进依赖追踪
+  void takeoverVersion.value
   if (!currentConversation.value) return null
   const key = getConvKeyForTakeover(currentConversation.value)
   if (!key) return null
   return takeoverByConv.get(key)?.agentId || null
 })
-// Data — agents and groups. Conversation data is owned by Conversations.
+// Data — agents. Conversation data is owned by Conversations.
 const agents = reactive([])
 const agentsLoaded = ref(false)
+
+// dev/test 期间临时 mock AGENT_MYBOTS 的返回值。结构 / 字段 / 头像 url
+// 全部按生产环境真实接口响应造，接真接口时只把下方 await new Promise(...) 那一行
+// 改回 `await get(SERVER_PATH.AGENT_MYBOTS)`，再删掉这个常量即可。
+const __MOCK_AGENTS__ = {
+  code: 0,
+  msg: 'success',
+  data: {
+    items: [
+      {
+        bot_id: 'gcWkNn85ZSS',
+        unique_name: 'gcwknn85zss',
+        nickname: '小柚天气',
+        display_name: '小柚天气',
+        avatar: 'https://snailchat-file.oss-ap-southeast-1.aliyuncs.com/avatars/nwm6fxqt2aeebhb7/1782181828062_eTFkRX847lV.webp',
+        avatar_url: 'https://snailchat-file.oss-ap-southeast-1.aliyuncs.com/avatars/nwm6fxqt2aeebhb7/1782181828062_eTFkRX847lV.webp',
+        greeting: '嗨，我是小天～告诉我你想看哪个城市的天气，我来帮你查。',
+        status: 'trained',
+        active_version: 'v1'
+      },
+      {
+        bot_id: '5zYkpWbFuhB',
+        unique_name: 'a5zykpwbfuhb',
+        nickname: 'juggle 小问',
+        display_name: 'juggle 小问',
+        avatar: 'https://snailchat-file.oss-ap-southeast-1.aliyuncs.com/avatars/nwm6fxqt2aeebhb7/1781687976720_WTFA1lbv5DR.webp',
+        avatar_url: 'https://snailchat-file.oss-ap-southeast-1.aliyuncs.com/avatars/nwm6fxqt2aeebhb7/1781687976720_WTFA1lbv5DR.webp',
+        greeting: '欢迎使用 juggleIM',
+        status: 'trained',
+        active_version: 'v1'
+      },
+      {
+        bot_id: 'Gj4QLs9YFwC',
+        unique_name: 'gj4qls9yfwc',
+        nickname: '小方糖～',
+        display_name: '小方糖～',
+        avatar: 'https://snailchat-file.oss-ap-southeast-1.aliyuncs.com/avatars/nwm6fxqt2aeebhb7/1781601261266_-sNQYI80MwI.webp',
+        avatar_url: 'https://snailchat-file.oss-ap-southeast-1.aliyuncs.com/avatars/nwm6fxqt2aeebhb7/1781601261266_-sNQYI80MwI.webp',
+        greeting: '你好',
+        status: 'trained',
+        active_version: 'v1'
+      }
+    ],
+    offset: '675NdFjkx'
+  }
+}
 
 async function loadAgents() {
   if (agentsLoaded.value) return
   try {
-    const res = await get(SERVER_PATH.AGENT_MYBOTS)
+    // TODO(接入): 走真接口时把这一行改回 `const res = await get(SERVER_PATH.AGENT_MYBOTS)`
+    const res = await new Promise((resolve) => setTimeout(() => resolve(__MOCK_AGENTS__), 50))
     if (res?.code === 0 && Array.isArray(res.data?.items)) {
      const list = res.data.items
       //  .filter(item => item.status === 'trained' && item.active_version)
@@ -178,44 +231,16 @@ async function loadAgents() {
   }
 }
 
-const groups = reactive([
-  {
-    id: 'g1',
-    name: '营销策划组',
-    agentCount: 3,
-    messages: [
-      { type: 'user', text: '帮我策划下个月双11的小红书营销方案，预算2万以内，主推我们家的精华液' },
-      { type: 'agent', agentName: '营销专家', agentEmoji: '🎯', text: '好的！2万预算做精华液小红书推广，我建议分三步：\n\n**1. 预热期(11.1-11.7) 预算8000**\n· 邀请5位腰部达人产出种草笔记\n· 素人铺量20篇真实测评\n· 话题标签：#秋冬精华推荐 #双11必买清单\n\n**2. 爆发期(11.8-11.11) 预算10000**\n· 信息流精准投放，定向25-35岁女性\n· 头部达人1篇视频测评（预算占大头）\n· 限时优惠券+评论区互动引导\n\n**3. 返场期(11.12-11.15) 预算2000**\n· 用户好评二次传播\n· 未转化用户私信触达' },
-      { type: 'agent', agentName: '财务助手', agentEmoji: '💰', text: '预算分配基本合理，补充几点：\n\n· 信息流投放按CPM 50预估，10000预算约20万曝光\n· 建议聚焦一二线城市女性25-35岁\n· 预留5%机动预算（约1000元）应对突发需求\n· ROI预期：按行业平均3%-5%转化率，预计产出300-500单\n\n风险提示：达人排期要提前锁定，双11期间优质达人资源紧张。' },
-      { type: 'agent', agentName: '内容助手', agentEmoji: '✍️', text: '我来补充内容策略方向：\n\n**笔记标题方向：**\n· "终于找到本命精华！干敏皮双11必囤"\n· "30天精华实测，这效果我服了"\n\n**内容关键卖点：**\n· 成分党友好（列出核心成分+功效数据）\n· 使用前后对比（真实记录）\n· 性价比对比（横向对比大牌平替）\n\n**避坑提醒：**\n· 禁用"最""第一"等绝对化用语\n· 达人需真实使用7天以上再出内容\n· 素人笔记保持自然语气，避免过度营销感' },
-    ]
-  },
-  {
-    id: 'g2',
-    name: '技术方案评审组',
-    agentCount: 2,
-    messages: [
-      { type: 'user', text: '我们想做一个会员积分系统，请帮我评审下技术方案：用Redis做积分存储，MySQL做订单记录，前端实时展示积分变动' },
-      { type: 'agent', agentName: '架构师', agentEmoji: '🏗️', text: '方案方向正确，但有几个优化建议：\n\n1. Redis做积分存储很好，但需要配合AOF持久化防止数据丢失\n2. 建议增加一层积分变动的消息队列（Kafka/RabbitMQ），解耦订单系统和积分系统\n3. 实时展示可以用WebSocket推送，不要轮询\n4. 考虑积分过期机制，用Redis的TTL或者定时任务扫描' },
-      { type: 'agent', agentName: '安全专家', agentEmoji: '🔒', text: '安全方面需要关注：\n\n· Redis一定要设置密码且不暴露公网\n· 积分变动操作需要幂等设计（防止重复扣减/增加）\n· 增加风控规则：单用户单日积分上限、异常行为检测\n· 所有积分变动操作记录审计日志\n· 前端展示要做数据签名校验，防止篡改' },
-    ]
-  }
-])
-
 const showCreateAgent = ref(false)
 const showLogoutModal = ref(false)
 
-// Computed
-const currentGroup = computed(() => {
-  return groups.find(g => g.id === currentGroupId.value) || null
-})
 
 // "Nothing selected" state — no conversation AND no group. Used to swap
 // the right two panes (Chat + Agent) for a centered "pick a conversation"
 // placeholder. We keep the left sidebar visible so the user has something
 // concrete to click on.
 const hasNoSelection = computed(
-  () => !currentConversation.value && !currentGroup.value
+  () => !currentConversation.value
 )
 
 // 「还是未认领工单」的会话。认领成功后 status 会被推到 1（处理中），
@@ -226,10 +251,27 @@ const isTicketConversation = computed(
   () => currentConversation.value?.isTicket === true && currentConversation.value?.status === 0
 )
 
-const currentMessages = computed(() => {
-  if (currentView.value === 'group') {
-    return currentGroup.value?.messages || []
+// 客户信息：派生自当前会话。AgentPanel 内部还有 mock 兜底，
+// 所以这里 null 也是合法的（占位 + 未选中态）。
+const currentCustomerInfo = computed(() => {
+  const c = currentConversation.value
+  if (!c) return null
+  const name = c.name || c.conversationName || c.userName || c.displayName || '未命名客户'
+  return {
+    name,
+    initial: c.initial || name.charAt(0),
+    subtitle: c.subtitle
+      || (c.id ? String(c.id) : '')
+      || (c.platform ? String(c.platform) : 'Web'),
+    online: c.online !== false,
+    platformColor: c.platformColor || '',
+    avatar: c.avatar || c.portrait || '',
+    platformKey: (c.platform || c.platformKey || '').toLowerCase(),
+    unreadDot: Boolean(c.unreadDot)
   }
+})
+
+const currentMessages = computed(() => {
   return currentConversation.value?.messages || []
 })
 
@@ -297,11 +339,13 @@ function handleConvoSelect(convo) {
   currentView.value = 'conversation'
   currentConvoId.value = convo.id
   currentConversation.value = convo
-  currentGroupId.value = null
   currentSession.value = null  // reset — will be populated by lookup below
+  // 切会话触发一次重算：让 currentTakenOverAgentId 立刻反映新会话的 takeover 状态
+  takeoverVersion.value++
   // Step 1: 点击会话 → 查询 session 是否存在，回显 agent 状态
   loadAgents().then(() => lookupOrCreateSession(convo))
 }
+
 
 function handleSuggestionReceived({ session_id, unique_name, content, msg_id }) {
   console.log('[MainView] suggestionReceived:', session_id, unique_name, content)
@@ -414,7 +458,6 @@ async function handleConversationOp({ key, conversation }) {
 
 function handleGroupSelect(id) {
   currentView.value = 'group'
-  currentGroupId.value = id
   currentConvoId.value = null
   currentConversation.value = null
   // Per-conversation 托管 state is not affected by switching into group
@@ -531,8 +574,6 @@ function handleSend(text) {
 
   if (currentView.value === 'conversation' && currentConversation.value) {
     currentConversation.value.messages.push({ type: 'outgoing', text })
-  } else if (currentView.value === 'group' && currentGroup.value) {
-    currentGroup.value.messages.push({ type: 'user', text })
   }
 }
 
@@ -588,26 +629,13 @@ function handleTakeoverToggle(conversation, agentId) {
 }
 
 async function handleSelectAgent(id) {
-  // Mode toggle rules (auto_mode):
-  //   0 = 人工回复 → click → 1 (协助回复)
-  //   1 = 协助回复 → click → 0 (人工回复)
-  //   2 = 自动回复(托管) → click → 0 (人工回复) + clear takeover tag
+  // 列表行点击 = 切换当前会话的写作 agent（仅改 unique_name + selectedAgentId），
+  // **不**动 mode。mode 改由专门的"托管 / 取消托管"按钮触发。
+  // 当前会话已托管给 agent X，再点列表里 agent Y：
+  //   - Y !== X：切 agent 风格，但接管保持（hosted 行变 Y）
+  //   - Y === X：保持
   if (id === null) {
     selectedAgentId.value = null
-    // 取消选中 → 恢复人工回复
-    if (currentSession.value?.session_id && currentSession.value.auto_mode !== 0) {
-      try {
-        await post(SERVER_PATH.AGENT_SESSION_TAKEOVER(currentSession.value.session_id), { auto_mode: 0 })
-        if (currentSession.value) {
-          currentSession.value.auto_mode = 0
-        }
-        if (currentConversation.value) {
-          clearTakeover(currentConversation.value)
-        }
-      } catch (e) {
-        console.warn('[MainView] deselect agent mode reset failed', e)
-      }
-    }
     return
   }
 
@@ -618,16 +646,9 @@ async function handleSelectAgent(id) {
   const convId = conv.conversationId || conv.id
   if (!convId) return
 
-  const isSwitch = selectedAgentId.value && selectedAgentId.value !== id
   selectedAgentId.value = id
 
-  // Agent switch → clear takeover tag (mode will be set below)
-  if (isSwitch && currentConversation.value) {
-    clearTakeover(currentConversation.value)
-  }
-
   if (currentSession.value?.session_id) {
-    // Session 已存在 → 更新 agent
     try {
       const res = await post(SERVER_PATH.AGENT_SESSION_UPDATE_AGENT(currentSession.value.session_id), {
         unique_name: ag.unique_name
@@ -635,37 +656,11 @@ async function handleSelectAgent(id) {
       if (res?.code === 0 && res.data) {
         currentSession.value = res.data
       }
-      // Toggle auto_mode：仅切换 agent 或当前为人工/自动时变更
-      const currentMode = currentSession.value?.auto_mode ?? 0
-      let newMode = currentMode
-      if (isSwitch) {
-        // 切换到新 agent → 协助模式
-        newMode = 1
-      } else if (currentMode === 0) {
-        // 人工 → 协助
-        newMode = 1
-      } else if (currentMode === 2) {
-        // 自动(托管) → 人工
-        newMode = 0
-      }
-      // 协助(1)点击同一 agent → 保持协助，不切换
-      if (newMode !== currentMode) {
-        const tres = await post(SERVER_PATH.AGENT_SESSION_TAKEOVER(currentSession.value.session_id), { auto_mode: newMode })
-        if (currentSession.value) {
-          currentSession.value.auto_mode = newMode
-          if (newMode === 0) {
-            currentSession.value.unique_name = ''
-            currentSession.value.agent = null
-            selectedAgentId.value = null
-            clearTakeover(conv)
-          }
-        }
-      }
     } catch (e) {
       console.warn('[MainView] update session agent failed', e)
     }
   } else {
-    // Session 不存在 → 创建（初始为协助模式）
+    // Session 不存在 → 创建（mode 默认 0 人工，由"托管"按钮或后续交互推）
     try {
       const res = await post(SERVER_PATH.AGENT_SESSION_CREATE, {
         conv_id: convId,
@@ -673,7 +668,7 @@ async function handleSelectAgent(id) {
         unique_name: ag.unique_name,
         customer_id: conv.customerId || conv.userid || '',
         platform: conv.platform || 'jim',
-        auto_mode: 1
+        auto_mode: 0
       })
       if (res?.code === 0 && res.data) {
         currentSession.value = res.data
@@ -681,6 +676,44 @@ async function handleSelectAgent(id) {
     } catch (e) {
       console.warn('[MainView] create session failed', e)
     }
+  }
+}
+
+
+// "托管"按钮：把当前 agent 设为会话的接管者，并把 session.auto_mode 推到 2。
+// 流程：① 选中 agent（chat 切风格）→ ② 接管（setTakeover）→ ③ 通知后端。
+function handleHostAgent(agentId) {
+  const ag = agents.find(a => a.id === agentId)
+  const conv = currentConversation.value
+  if (!ag || !conv) return
+  if (selectedAgentId.value !== agentId) {
+    selectedAgentId.value = agentId
+  }
+  // 托管：先写本地 Map（AgentPanel 通过 currentTakenOverAgentId 立刻看到状态变化），
+  // 再同步后端 session.auto_mode = 2。
+  setTakeover(conv, ag.id)
+  const sessionId = currentSession.value?.session_id
+  if (sessionId) {
+    post(SERVER_PATH.AGENT_SESSION_UPDATE_AGENT(sessionId), { unique_name: ag.unique_name })
+      .then(res => { if (res?.code === 0 && res.data) currentSession.value = res.data })
+      .catch(e => console.warn('[MainView] host-agent update session failed', e))
+    post(SERVER_PATH.AGENT_SESSION_TAKEOVER(sessionId), { auto_mode: 2 })
+      .then(res => { if (currentSession.value) currentSession.value.auto_mode = 2 })
+      .catch(e => console.warn('[MainView] host-agent takeover api failed', e))
+  }
+}
+
+// "取消托管"按钮：清掉当前会话的接管，把 session.auto_mode 拉回 1。
+function handleUnhostAgent() {
+  const conv = currentConversation.value
+  if (!conv) return
+  // 先清本地 Map 让 AgentPanel 立刻看到状态变化，再同步后端
+  clearTakeover(conv)
+  const sessionId = currentSession.value?.session_id
+  if (sessionId) {
+    post(SERVER_PATH.AGENT_SESSION_TAKEOVER(sessionId), { auto_mode: 1 })
+      .then(res => { if (currentSession.value) currentSession.value.auto_mode = 1 })
+      .catch(e => console.warn('[MainView] unhost-agent api failed', e))
   }
 }
 
@@ -710,10 +743,8 @@ function setTakeover(conversation, agentId) {
   const key = getConvKeyForTakeover(conversation)
   if (!key) return
   const wasIn = takeoverByConv.has(key)
-  // Map.set is needed even when wasIn is true — switching the driving
-  // Agent on the same conversation (e.g. A→B) is a local-only update,
-  // no SDK call. The tag membership is per-conversation, not per-agent.
   takeoverByConv.set(key, { conversation, agentId })
+  takeoverVersion.value++
   if (!wasIn) {
     void im.addConversationToTakeoverTag(conversation)
   }
@@ -724,10 +755,9 @@ function clearTakeover(conversation) {
   const key = getConvKeyForTakeover(conversation)
   if (!key) return
   if (!takeoverByConv.has(key)) return
-  // Fire the SDK call BEFORE deleting the Map entry, so we still have
-  // the conversation object on hand for the remove payload.
   void im.removeConversationFromTakeoverTag(takeoverByConv.get(key).conversation)
   takeoverByConv.delete(key)
+  takeoverVersion.value++
 }
 
 function clearTakeoverForConv(conversationType, conversationId) {
@@ -771,8 +801,6 @@ function clearTakeoverForConv(conversationType, conversationId) {
       :messages="currentMessages"
       :suggestions="currentSuggestions"
       :is-group="currentView === 'group'"
-      :group-name="currentGroup?.name || ''"
-      :group-agent-count="currentGroup?.agentCount || 0"
       :selected-agent="selectedAgent"
       :taken-over-agent="takenOverAgent"
       :auto-mode="autoMode"
@@ -791,16 +819,34 @@ function clearTakeoverForConv(conversationType, conversationId) {
       :selected-agent-id="selectedAgentId"
       :mode="agentPanelMode"
       :hosted-agent-id="currentTakenOverAgentId"
+      :customer="currentCustomerInfo"
       @select-agent="handleSelectAgent"
-      @update:mode="handleAgentPanelModeChange"
-      @toggle-host="(agentId) => handleTakeoverToggle(currentConversation, agentId)"
+      @host-agent="handleHostAgent"
+      @unhost-agent="handleUnhostAgent"
     />
 
-    <main v-if="hasNoSelection" class="jm-app-placeholder">
-      <div class="jm-app-placeholder__inner">
-        <div class="jm-app-placeholder__icon">💬</div>
-        <div class="jm-app-placeholder__text">暂无会话</div>
-        <div class="jm-app-placeholder__hint">请在左侧选择一个会话开始沟通</div>
+    <main v-if="hasNoSelection" class="jm-empty">
+      <div class="jm-empty__inner">
+        <div class="jm-empty__art" aria-hidden="true">
+          <svg viewBox="0 0 120 88" fill="none">
+            <!-- 主气泡 -->
+            <path d="M16 18a8 8 0 0 1 8-8h52a8 8 0 0 1 8 8v28a8 8 0 0 1-8 8H44l-12 10v-10h-8a8 8 0 0 1-8-8V18z" fill="#E6F2FF" stroke="#0080FF" stroke-width="1.6"/>
+            <circle cx="36" cy="34" r="2.4" fill="#0080FF"/>
+            <circle cx="50" cy="34" r="2.4" fill="#0080FF"/>
+            <circle cx="64" cy="34" r="2.4" fill="#0080FF"/>
+            <!-- 副气泡 -->
+            <path d="M52 56a6 6 0 0 1 6-6h44a6 6 0 0 1 6 6v18a6 6 0 0 1-6 6h-6v8l-10-8h-28a6 6 0 0 1-6-6V56z" fill="#F2F8FF" stroke="#CBD5E1" stroke-width="1.4"/>
+            <rect x="62" y="66" width="30" height="3" rx="1.5" fill="#CBD5E1"/>
+            <rect x="62" y="73" width="20" height="3" rx="1.5" fill="#CBD5E1"/>
+          </svg>
+        </div>
+        <h2 class="jm-empty__title">选择会话开始沟通</h2>
+        <p class="jm-empty__desc">从左侧列表里挑一个会话，聊天面板会显示对应的客户、历史消息和 AI 建议。</p>
+        <ul class="jm-empty__tips">
+          <li><span class="dot"></span>支持视图过滤：<b>我的 / 待分配 / AI 托管中 / 全部</b></li>
+          <li><span class="dot"></span>支持按平台筛选：<b>Web / Telegram / JuggleChat</b></li>
+          <li><span class="dot"></span>搜索框可按客户名、关键词快速定位</li>
+        </ul>
       </div>
     </main>
 
