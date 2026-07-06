@@ -234,7 +234,7 @@ const navItems = [
   font-weight: 600;
   display: grid;
   place-items: center;
-  border: 2px solid var(--bg);
+  /* border: 2px solid var(--bg); */
 }
 
 .nav-rail .spacer { flex: 1; }

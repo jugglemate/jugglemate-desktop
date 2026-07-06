@@ -449,6 +449,10 @@ async function fetchUnreadCounts() {
       // 兜底场景下没法分桶，VIEW.ALL / PLATFORM.ALL 拿兜底数，其他保持 0
       filterCounts[VIEW.ALL] = total
       filterCounts[PLATFORM.ALL] = total
+      // 兜底也同步 inboxUnreadTotal —— 全账号总未读就是收件箱未读
+      // 必须写 .value：im 暴露的是 Ref，赋值给 im.inboxUnreadTotal 会把 default
+      // export 对象上的 ref 字段覆盖成普通数字，订阅方再读 .value 会拿到 undefined。
+      im.inboxUnreadTotal.value = total
       return
     } catch (e) {
       console.warn('[Conversations] fetchUnreadCounts fallback failed', e)
@@ -466,6 +470,12 @@ async function fetchUnreadCounts() {
   filterCounts[PLATFORM.TELEGRAM] = local.telegram
   filterCounts[PLATFORM.JUGGLECHAT] = local.jugglechat
   filterCounts[PLATFORM.ALL] = local.all
+  // 同步到 im 单例的 inboxUnreadTotal.value，让 NavSidebar 上「收件箱」badge 跟着刷新。
+  // 触发条件：fetchUnreadCounts 本身已经被 onStateChanged / watch(currentView|Platform)
+  // / scheduleUnreadRefresh（新消息 / CONVERSATION_CHANGED / REMOVED / 清未读）
+  // 覆盖，所以新消息到达、用户清未读、切视图/平台时 badge 都会自动更新。
+  // 写 .value 才能触发订阅方的重算（NavSidebar 的 inboxBadge computed 依赖 .value）。
+  im.inboxUnreadTotal.value = local.all
 }
 
 // 前端按 _raw.tags / platform 字段分桶计算未读总数。
@@ -480,9 +490,12 @@ function bucketUnreadByTags(list) {
     const unread = Number(c.unread ?? c.unreadCount ?? 0)
     if (unread <= 0) continue
     const tags = c.tags || []
-    const isMine = tags.some(t => t?.tag === CONVERSATION_TAG_ID.MY_TICKET)
-    const isTakeover = tags.some(t => t?.tag === im.TAKEOVER_TAG_ID)
-    const isAssigned = tags.some(t => t?.tag === CONVERSATION_TAG_ID.ASSIGNED)
+    // 协议层 tag 元素形状是 {id, name, type}（juggleim-es formatConversations
+    // 把 converTags 的 {tag, tagName, tagType} 映射成 {id, name, type}）。
+    // 之前用 t?.tag 是 SDK 内部变量名，写错了 → 分桶永远 0。
+    const isMine = tags.some(t => t?.id === CONVERSATION_TAG_ID.MY_TICKET)
+    const isTakeover = tags.some(t => t?.id === im.TAKEOVER_TAG_ID)
+    const isAssigned = tags.some(t => t?.id === CONVERSATION_TAG_ID.ASSIGNED)
     if (isMine) mine += unread
     if (isTakeover) takeover += unread
     if (isAssigned) assigned += unread
@@ -614,9 +627,30 @@ const sortedConversations = computed(() => {
 // 暴露给父组件的方法。
 // refresh() 主动触发一次「拉 IM 会话 + 拉未读数」，用于父组件在工单认领后
 // 让左侧 mine 视图立刻反映 my_ticket tag 的变化。
+// refreshOne(conversation) 只刷单条：调 IM SDK 的 getConversation 拿最新 raw
+// conversation，再用 mapConversation 包一层 upsert 进 imConversations ——
+// 不重拉整个列表。工单认领成功后 SDK 端 addConversationsToTag 已经把 assigned
+// tag 落库，但 SDK 本地缓存的 tags 不会立即更新；调一次 getConversation 拿
+// 权威视图，再回灌到 UI / currentConversation 即可。
 defineExpose({
   refresh() {
     return Promise.all([fetchConversations(), fetchUnreadCounts()])
+  },
+  async refreshOne(conversation) {
+    if (!conversation) return null
+    const convKey = getConversationId(conversation)
+    if (!convKey) return null
+    try {
+      const result = await im.getConversation(conversation)
+      const fresh = result?.conversation
+      if (!fresh) return null
+      const wrapped = mapConversation(fresh)
+      upsert(imConversations, wrapped)
+      return wrapped
+    } catch (e) {
+      console.warn('[Conversations] refreshOne failed', e)
+      return null
+    }
   }
 })
 </script>

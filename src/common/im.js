@@ -14,6 +14,12 @@ let _connecting = false
 // 响应式连接状态 — UI 可以拿来展示「连接中/已连接」之类的状态指示。
 export const connectionState = ref(false)
 
+// 收件箱未读总数（所有会话未读加总），由 Conversations.fetchUnreadCounts()
+// 写一次、给父组件 MainView / NavSidebar 订阅。NavSidebar 上 "收件箱"
+// 入口的 badge 就是这个值。新消息 / CONVERSATION_CHANGED / 清未读等
+// 事件已经在 Conversations 里 scheduleUnreadRefresh()，落到本 ref。
+export const inboxUnreadTotal = ref(0)
+
 // ---------------------------------------------------------------------------
 // Conversation tags (a.k.a. 会话分组).
 //
@@ -196,6 +202,20 @@ function init() {
 
 function getCurrent() {
   return juggle
+}
+
+// 拉取单个会话的最新数据。SDK 协议是：
+//   juggle.getConversation({conversationType, conversationId})
+//     -> Promise<{ conversation }>
+// 这里做一层包装（和 fetchConversationTags 同风格），调用方只需要传一个描述符
+// （既可以是当前持有的会话对象，也可以是裸的 {conversationType, conversationId}）。
+// 用在工单认领成功后：服务端 addConversationsToTag 落库，但 SDK 本地缓存里的
+// tags 不会立即更新；调一次 getConversation 拿权威视图，再回灌到 UI。
+async function getConversation(conversation) {
+  if (!juggle?.getConversation) {
+    throw new Error('[im] juggle.getConversation is not available')
+  }
+  return juggle.getConversation(conversation)
 }
 
 function isConnected() {
@@ -605,6 +625,7 @@ const {
 export default {
   init,
   getCurrent,
+  getConversation,
   isConnected,
   isConnecting: () => _connecting,
   connect,
@@ -635,6 +656,8 @@ export default {
   formatTicketAssignPreview,
   // 响应式连接状态 — 用于 UI 展示「连接中 / 已连接」之类的指示
   connectionState,
+  // 收件箱未读总数 — NavSidebar 上的「收件箱」badge 用
+  inboxUnreadTotal,
   Event,
   ConnectionState,
   ErrorType,

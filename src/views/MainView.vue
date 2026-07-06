@@ -30,9 +30,15 @@ const activeNav = ref('inbox')
 const showUserDrawer = ref(false)
 const currentUserId = computed(() => currentUser.value?.id || 'user_12345678')
 
-// 收件箱未读数：当前 Conversations 组件不向上抛总数，暂占位为 0
-// TODO: Conversations 通过 defineExpose 或 emit('count-change', n) 上抛
-const inboxBadge = computed(() => 0)
+// 收件箱未读数 —— 订阅 im.inboxUnreadTotal。
+// 数据写入由 Conversations.fetchUnreadCounts() 完成（im 单例的 reactive ref），
+// 触发时机：登录 / onStateChanged / watch(currentView|currentPlatform) /
+// 收到新消息 / CONVERSATION_CHANGED / REMOVED / 用户清未读。
+// 因此 NavSidebar 上「收件箱」badge 跟这些事件流自动同步，无需手动通知。
+// 必须 .value 解包 Ref：否则 computed 返回 Ref 对象本身（永远 truthy），
+// 导致 NavSidebar 上「v-if="inboxBadge"」始终为 true，0 时也会展示 badge；
+// 并且 computed 没有 track 到 ref.value，后续 .value 变化不会触发重算。
+const inboxBadge = computed(() => im.inboxUnreadTotal.value || 0)
 
 function handleNavChange(nav) {
   activeNav.value = nav
@@ -374,11 +380,13 @@ function handleConvoSelect(convo) {
 }
 
 // 认领成功后：让 IM 会话列表重新拉一次（认领会改 IM 的 my_ticket /
-// assigned tag，应该立刻反映到左侧 mine 视图）。
+// assigned tag，应该立刻反映到左侧 mine 视图）。返回 refresh() 的 promise，
+// 调用方可以 await 等待「整列表重拉 + 未读数刷新」完成。
 function refreshAfterClaim() {
   if (conversationsRef.value && typeof conversationsRef.value.refresh === 'function') {
-    void conversationsRef.value.refresh()
+    return conversationsRef.value.refresh()
   }
+  return Promise.resolve()
 }
 
 
@@ -456,7 +464,7 @@ async function lookupOrCreateSession(convo) {
         unique_name: firstAg.unique_name,
         customer_id: convo.customerId || convo.userid || '',
         platform: convo.platform || 'jim',
-        auto_mode: 1
+        auto_mode: 0
       })
       if (createRes?.code === 0 && createRes.data) {
         currentSession.value = createRes.data
@@ -537,17 +545,14 @@ async function handleClaimTicket(ticketId) {
       void im.addConversationToMyTicketTag(convForTag)
     }
 
-    // 1. 把当前会话从"未分配"切到"处理中" → 驱动 ChatMain 的
-    //    isTicketUnassigned 变 false，自动隐藏认领 banner、放开发送按钮和回车。
-    //    同步把 assigned / my_ticket 写进 conv.tags，让 ChatMain 的响应式
-    //    computed 立刻看到 tag，不必等 IM SDK 的 addConversationToXxxTag
-    //    异步 fire-and-forget 完成。
+    // 1. 把当前会话的本地 status 切到 1（处理中），让 ChatMain 的响应式
+    //    computed 立刻看到"已分配"，banner / 发送按钮 / 回车快速解锁。
+    //    注意：tags 不在这里手 push —— SDK 的 addConversationsToTag 已经把
+    //    assigned / my_ticket 落库，等下面 refreshOne() 拉回权威 raw 之后
+    //    再统一回灌，避免本地和 SDK 数据分裂。
     const conv = currentConversation.value
     if (conv && conv.ticket_id === ticketId) {
       conv.status = 1  // 1 = 处理中
-      if (!Array.isArray(conv.tags)) conv.tags = []
-      if (!conv.tags.includes('assigned')) conv.tags.push('assigned')
-      if (!conv.tags.includes('my_ticket')) conv.tags.push('my_ticket')
     }
 
     // 2. 发系统通知消息（保留原有行为）
@@ -583,7 +588,21 @@ async function handleClaimTicket(ticketId) {
 
     // 3. 刷新 IM 会话列表。同步给当前会话加 assigned + my_ticket tag 之后，
     //    mine 视图里应该立刻多出这一条。
-    refreshAfterClaim()
+    await refreshAfterClaim()
+
+    // 3.5 用 SDK 拉一次单条最新 conversation（带新的 tags / status / unreadCount
+    //     等），替换掉 imConversations 列表里这一行，并把 currentConversation
+    //     也同步刷新 —— 这样 ChatMain 里 isAssignedConversation
+    //     （基于 tags.some(t=>t.id==='assigned')）和 unassigned 视图
+    //     （基于 exceptTag=assigned 后端过滤）都按权威数据刷新。
+    if (conv) {
+      const refreshed = await conversationsRef.value?.refreshOne?.(conv)
+      if (refreshed) {
+        // refreshOne 内部已经 upsert 了列表项；这里再把 currentConversation
+        // 指向最新的 wrapper，让 ChatMain 立即看到新 tags / status。
+        currentConversation.value = refreshed
+      }
+    }
 
     // 4. 给这个会话建立/查找一个 agent session，让大模型建议链路跟上
     if (conv) {

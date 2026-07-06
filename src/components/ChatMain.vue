@@ -1353,28 +1353,6 @@ function onCancelReply() {
       </button>
     </div>
 
-    <!-- Ticket Claim Banner (unassigned ticket, user starts typing) -->
-    <div v-if="showClaimBanner" class="tyn-claim-banner animate-slideDown">
-      <!-- <div class="tyn-claim-banner__handle" aria-hidden="true"></div> -->
-      <div class="tyn-claim-banner__row">
-        <div class="tyn-claim-banner__text">
-          此对话未分配给您。您想要将此对话分配给自己吗？
-          <span
-            class="tyn-claim-banner__action"
-            :class="{ 'is-busy': claiming }"
-            role="button"
-            tabindex="0"
-            @click="onClaimTicket"
-            @keydown.enter.prevent="onClaimTicket"
-            @keydown.space.prevent="onClaimTicket"
-          >
-            <span class="tyn-claim-banner__arrow" aria-hidden="true">→</span>
-            <span>{{ claiming ? '分配中...' : '分配给我' }}</span>
-          </span>
-        </div>
-      </div>
-    </div>
-
     <!-- Pending Agent Suggestions -->
     <!-- Pending Agent Suggestions —— 复用基础类 + warning 修饰 -->
     <div v-if="pendingSuggestions.length > 0" class="tyn-takeover-banner tyn-takeover-banner--warning animate-slideDown">
@@ -1488,6 +1466,30 @@ function onCancelReply() {
 
     <!-- Reply quote banner -->
     <ReplyQuote v-if="replyTo && !isGroup" :message="replyTo" @cancel="onCancelReply" />
+
+    <!-- Ticket Claim Banner —— 紧贴输入框上方，提示坐席认领。
+         这个 banner 之前放在 header 下方，但消息列表很长时离 composer 太远，
+         用户感知不到"现在要分配"。挪到这里后，无论消息多长 banner 始终
+         钉在输入框上方。 -->
+    <div v-if="showClaimBanner" class="tyn-claim-banner animate-slideDown">
+      <div class="tyn-claim-banner__row">
+        <div class="tyn-claim-banner__text">
+          此对话未分配给您。您想要将此对话分配给自己吗？
+          <span
+            class="tyn-claim-banner__action"
+            :class="{ 'is-busy': claiming }"
+            role="button"
+            tabindex="0"
+            @click="onClaimTicket"
+            @keydown.enter.prevent="onClaimTicket"
+            @keydown.space.prevent="onClaimTicket"
+          >
+            <span class="tyn-claim-banner__arrow" aria-hidden="true">→</span>
+            <span>{{ claiming ? '分配中...' : '分配给我' }}</span>
+          </span>
+        </div>
+      </div>
+    </div>
 
     <!-- Chat Input (P0+ text + P1 attachments) -->
     <MessageSender
@@ -1619,14 +1621,14 @@ function onCancelReply() {
   font-family: monospace;
 }
 
-/* Ticket Claim Banner */
+/* Ticket Claim Banner —— 紧贴输入框上方，border-top 做分割线 */
 .tyn-claim-banner {
   position: relative;
   display: flex;
   flex-direction: column;
-  padding: 8px 16px 12px;
+  padding: 10px 16px;
   background: linear-gradient(180deg, #f5f8ff 0%, #eaf1fc 100%);
-  border-bottom: 1px solid var(--border-info, #c7dcfb);
+  border-top: 1px solid var(--border-info, #c7dcfb);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
