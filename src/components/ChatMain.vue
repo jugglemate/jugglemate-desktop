@@ -46,11 +46,6 @@ const props = defineProps({
     type: Array,
     default: () => []
   },
-  // Ticket object (when conversation.isTicket === true)
-  ticket: {
-    type: Object,
-    default: null
-  },
   // The currently *selected* Agent on the right-side panel. Drives the
   // header status tip ("{name} 正在协助回复" / "人工自主回复"). This is the
   // operator's "I'm writing in this Agent's voice" signal — distinct from
@@ -75,9 +70,12 @@ const props = defineProps({
   autoMode: {
     type: Number,
     default: 0
+  },
+  assigned: {
+    type: Boolean,
+    default: false
   }
 })
-
 const emit = defineEmits(['send', 'useSuggestion', 'revokeTakeover', 'clearSuggestion', 'claimTicket'])
 
 const { Event, SentState, MessageType, ConversationType } = im
@@ -228,8 +226,8 @@ const modeIconSvg = computed(() => {
   return ICON_HUMAN
 })
 
-const isTicket = computed(() => props.conversation?.isTicket === true)
-const isTicketUnassigned = computed(() => isTicket.value && props.ticket?.status === 0)
+const isAssignedConversation = computed(() => props.assigned)
+
 function onRevokeTakeover() {
   // Banner's "收回控制" button — the source of truth for the current
   // conversation's 托管 lives in MainView's takeoverByConv map, so we
@@ -241,9 +239,8 @@ function onRevokeTakeover() {
 // --- Ticket claim ---
 function onClaimTicket() {
   claiming.value = true
-  emit('claimTicket', props.ticket?.ticket_id)
+  emit('claimTicket', props.conversation?.ticket_id)
   // Reset states after emission; the parent will handle the API call
-  // and refresh the ticket status accordingly
   claiming.value = false
   showClaimBanner.value = false
 }
@@ -440,7 +437,7 @@ async function sendText(text) {
 async function onSend(text) {
   // 未认领的工单不允许直接发消息 — 必须先认领。
   // 既挡住发送按钮，也挡住回车键（MessageSender 在 submit 之前会 emit send）。
-  if (isTicketUnassigned.value) {
+  if (!isAssignedConversation.value) {
     if (!text || !text.trim()) {
       showClaimBanner.value = true
     }
@@ -496,14 +493,14 @@ function onComposerInput(value) {
   composerText.value = value
   if (value.trim()) {
     // Don't send typing for unassigned tickets
-    if (!isTicketUnassigned.value) {
+    if (!!isAssignedConversation.value) {
       sendStartTyping()
     }
-    if (isTicketUnassigned.value) {
+    if (!isAssignedConversation.value) {
       showClaimBanner.value = true
     }
   } else {
-    if (!isTicketUnassigned.value) {
+    if (!!isAssignedConversation.value) {
       sendEndTyping()
     }
     showClaimBanner.value = false
@@ -511,7 +508,7 @@ function onComposerInput(value) {
 }
 
 function onComposerFocus() {
-  if (!isTicketUnassigned.value) {
+  if (!!isAssignedConversation.value) {
     sendStartTyping(true)
   }
 }
@@ -1276,15 +1273,6 @@ function handleSuggestionClick(suggestion) {
   emit('useSuggestion', suggestion)
 }
 
-function getPlatformLabel(platform) {
-  const labels = {
-    douyin: '🎵 抖音',
-    xhs: '📕 小红书',
-    tg: '✈️ Telegram'
-  }
-  return labels[platform] || ''
-}
-
 function onCancelReply() {
   replyTo.value = null
 }
@@ -1325,7 +1313,7 @@ function onCancelReply() {
           </div>
         </div>
       </div>
-      <div class="tyn-chat-header__actions" v-if="!isTicket">
+      <div class="tyn-chat-header__actions" v-if="isAssignedConversation">
         <div
           class="tyn-chat-header__agent-mode"
           :data-mode="currentMode"
@@ -1336,7 +1324,7 @@ function onCancelReply() {
           <span class="tyn-chat-header__mode-text">{{ modeText }}</span>
         </div>
       </div>
-      <div class="tyn-chat-header__actions" v-if="isTicketUnassigned">
+      <div class="tyn-chat-header__actions" v-if="!isAssignedConversation">
         <button
           class="tyn-btn tyn-btn--sm tyn-btn--primary"
           @click="onClaimTicket"
@@ -1364,19 +1352,6 @@ function onCancelReply() {
         收回控制
       </button>
     </div>
-
-    <!-- Ticket Header (when isTicket === true) -->
-    <!-- <div v-if="isTicket && ticket" class="tyn-ticket-header">
-      <div class="tyn-ticket-header__info">
-        <div class="tyn-ticket-header__title">{{ ticket.title || '工单' }}</div>
-        <div class="tyn-ticket-header__meta">
-          <span class="tyn-ticket-header__status" :class="`status-${ticket.status}`">
-            {{ ticket.status === 0 ? '未分配' : ticket.status === 1 ? '处理中' : '已关闭' }}
-          </span>
-          <span class="tyn-ticket-header__id">#{{ ticket.ticket_id }}</span>
-        </div>
-      </div>
-    </div> -->
 
     <!-- Ticket Claim Banner (unassigned ticket, user starts typing) -->
     <div v-if="showClaimBanner" class="tyn-claim-banner animate-slideDown">
@@ -1518,7 +1493,7 @@ function onCancelReply() {
     <MessageSender
       :model-value="composerText"
       :placeholder="conversation ? `发送消息给 ${conversation.name || ''}` : '输入消息...'"
-      :send-disabled="isTicketUnassigned"
+      :send-disabled="!isAssignedConversation"
       @update:model-value="onComposerInput"
       @focus="onComposerFocus"
       @blur="sendEndTyping"

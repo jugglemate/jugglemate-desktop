@@ -410,6 +410,49 @@ function buildTakeoverTagPayload(conversation) {
   }
 }
 
+// 透传 SDK 的 getTotalUnreadcount。
+// 协议层 QryTotalUnreadCountReq.filter 只支持 tag，**不支持 exceptTag**。
+// 所以"未分配"（exceptTag=assigned）这种语义没法用这个接口表达，
+// 调用方需要自行决定怎么处理（比如传 undefined tag 拿全量）。
+// @param {object} [params] - { tag?: string, conversationTypes?: number[], ignoreConversations?: [...] }
+// @returns {Promise<{ count: number }>}  // SDK 返回字段名是 count，不是 unreadCount
+async function getTotalUnreadcount(params = {}) {
+  if (!juggle?.getTotalUnreadcount) return { count: 0 }
+  try {
+    const result = await juggle.getTotalUnreadcount(params)
+    return { count: Number(result?.count || 0) }
+  } catch (e) {
+    console.warn('[im] getTotalUnreadcount failed', e)
+    return { count: 0 }
+  }
+}
+
+// 清指定会话的未读数。
+// 入参是会话对象（或对象数组），需要带 conversationType / conversationId / unreadIndex。
+// 内部直接调 juggle.clearUnreadcount（协议 ClearUnreadReq），
+// SDK 收到响应后会推 CONVERSATION_CHANGED 事件，本地会话对象的 unreadCount 会自动变 0。
+// 失败只 warn，不抛。
+async function clearUnreadCount(conversations) {
+  if (!juggle?.clearUnreadcount) return false
+  let list = Array.isArray(conversations) ? conversations : [conversations]
+  if (!list.length) return false
+  list = list.map(c => ({
+    conversationType: c.conversationType,
+    conversationId: c.conversationId,
+    unreadIndex: c.latestUnreadIndex,
+    messageId: c.latestMessage?.messageId,
+    messageSentTime: c.latestMessage?.messageSentTime
+  }))
+  if (!list.length) return false
+  try {
+    await juggle.clearUnreadcount(list)
+    return true
+  } catch (e) {
+    console.warn('[im] clearUnreadCount failed', e)
+    return false
+  }
+}
+
 async function addConversationToTakeoverTag(conversation) {
   if (!juggle?.addConversationsToTag) return false
   const tag = buildTakeoverTagPayload(conversation)
@@ -575,6 +618,8 @@ export default {
   syncTakeoverTagFromList,
   reconcileTakeoverTag,
   addConversationToTakeoverTag,
+  getTotalUnreadcount,
+  clearUnreadCount,
   removeConversationFromTakeoverTag,
   fetchConversationTags,
   // Ticket tag helpers. assigned / my_ticket 是工单认领流程用的两个会话 tag。

@@ -15,7 +15,6 @@ import { SERVER_PATH, get, post } from '../services/api'
 import { MSG_NAME, SESSION_FILTER } from '../common/enum'
 
 const router = useRouter()
-const ticketListRef = ref(null)
 const juggle = im.getCurrent()
 
 // Current logged-in user (from localStorage, set by login)
@@ -94,6 +93,10 @@ onMounted(async () => {
 const currentView = ref('conversation') // 'conversation' | 'group'
 const currentConvoId = ref(null)
 const currentConversation = ref(null)
+
+// Conversations 内部维护视图/平台过滤；右侧列表始终是 IM 会话
+// （unassigned 视图通过 exceptTag=assigned 在服务端过滤）。
+const conversationsRef = ref(null)  // 父组件引用，认领后调 refresh() 重拉 IM 会话
 // Two independent Agent-related states. Keep them separate on purpose:
 //   - selectedAgentId: which Agent's style the operator wants to write in.
 //     Drives the suggestion area (the single reply card shown above the
@@ -261,13 +264,15 @@ const hasNoSelection = computed(
   () => !currentConversation.value
 )
 
-// 「还是未认领工单」的会话。认领成功后 status 会被推到 1（处理中），
-// 这个 computed 自动变 false — 右侧 AgentPanel 就跟着出来了，ChatMain
-// 也不再走「未认领分支」（banner 隐藏、发送按钮可用、回车恢复）。
-// 注意不要只看 isTicket — 认领之后的会话 isTicket 还是 true，但已经是普通会话了。
-const isTicketConversation = computed(
-  () => currentConversation.value?.isTicket === true && currentConversation.value?.status === 0
-)
+// 已分配的会话 —— tags 是对象数组 [{id, name, type}, ...]，
+// 所以用 some(t => t.id === 'assigned') 判断；之前按字符串 includes('assigned')
+// 永远返 false，导致分配之后所有依赖 isAssignedConversation 的 v-if
+// （如右侧 AgentPanel、发送按钮的启用状态）都不刷新。
+const isAssignedConversation = computed(() => {
+  const tags = currentConversation.value?.tags
+  if (!Array.isArray(tags) || tags.length === 0) return false
+  return tags.some(t => t && t.id === 'assigned')
+})
 
 // 客户信息：派生自当前会话。AgentPanel 内部还有 mock 兜底，
 // 所以这里 null 也是合法的（占位 + 未选中态）。
@@ -366,6 +371,14 @@ function handleConvoSelect(convo) {
   takeoverVersion.value++
   // Step 1: 点击会话 → 查询 session 是否存在，回显 agent 状态
   loadAgents().then(() => lookupOrCreateSession(convo))
+}
+
+// 认领成功后：让 IM 会话列表重新拉一次（认领会改 IM 的 my_ticket /
+// assigned tag，应该立刻反映到左侧 mine 视图）。
+function refreshAfterClaim() {
+  if (conversationsRef.value && typeof conversationsRef.value.refresh === 'function') {
+    void conversationsRef.value.refresh()
+  }
 }
 
 
@@ -525,12 +538,16 @@ async function handleClaimTicket(ticketId) {
     }
 
     // 1. 把当前会话从"未分配"切到"处理中" → 驱动 ChatMain 的
-    //    isTicketUnassigned 变 false，自动隐藏认领 banner、放开发送按钮和回车
+    //    isTicketUnassigned 变 false，自动隐藏认领 banner、放开发送按钮和回车。
+    //    同步把 assigned / my_ticket 写进 conv.tags，让 ChatMain 的响应式
+    //    computed 立刻看到 tag，不必等 IM SDK 的 addConversationToXxxTag
+    //    异步 fire-and-forget 完成。
     const conv = currentConversation.value
     if (conv && conv.ticket_id === ticketId) {
       conv.status = 1  // 1 = 处理中
-      // 同时把本地会话的 isTicket 标记保留，避免左侧列表突然把这个会话当成普通会话
-      // 但让 ChatMain 通过 status 判断走"已分配"分支（隐藏 banner / 启用发送）
+      if (!Array.isArray(conv.tags)) conv.tags = []
+      if (!conv.tags.includes('assigned')) conv.tags.push('assigned')
+      if (!conv.tags.includes('my_ticket')) conv.tags.push('my_ticket')
     }
 
     // 2. 发系统通知消息（保留原有行为）
@@ -564,15 +581,11 @@ async function handleClaimTicket(ticketId) {
       }
     }
 
-    // 3. 刷新未分配工单列表，让这条工单从"未分配"列表中消失
-    if (ticketListRef.value?.refresh) {
-      ticketListRef.value.refresh()
-    }
+    // 3. 刷新 IM 会话列表。同步给当前会话加 assigned + my_ticket tag 之后，
+    //    mine 视图里应该立刻多出这一条。
+    refreshAfterClaim()
 
-    // 4. 切换 filter 到"我的" — 现在这个工单归我了，应该在"我的"列表里
-    filter.value = SESSION_FILTER.MINE
-
-    // 5. 给这个会话建立/查找一个 agent session，让大模型建议链路跟上
+    // 4. 给这个会话建立/查找一个 agent session，让大模型建议链路跟上
     if (conv) {
       await lookupOrCreateSession(conv)
     }
@@ -821,8 +834,9 @@ function clearTakeoverForConv(conversationType, conversationId) {
       @status-change="handleStatusChange"
     />
 
-    <!-- 会话面板：二级过滤侧栏 + 会话列表 -->
+    <!-- 会话面板：二级过滤侧栏 + 会话列表（IM 会话，过滤维度统一在 Conversations 内部） -->
     <Conversations
+      ref="conversationsRef"
       :active-id="currentView === 'conversation' ? currentConvoId : null"
       @select="handleConvoSelect"
       @conversation-op="handleConversationOp"
@@ -840,7 +854,7 @@ function clearTakeoverForConv(conversationType, conversationId) {
       :taken-over-agent="takenOverAgent"
       :auto-mode="autoMode"
       :pending-suggestions="currentPendingSuggestions"
-      :ticket="isTicketConversation ? currentConversation : null"
+      :assigned="isAssignedConversation"
       @send="handleSend"
       @use-suggestion="handleUseSuggestion"
       @revoke-takeover="handleRevokeTakeover"
@@ -849,7 +863,7 @@ function clearTakeoverForConv(conversationType, conversationId) {
     />
 
     <AgentPanel
-      v-if="!hasNoSelection &amp;&amp; !isTicketConversation"
+      v-if="!hasNoSelection && isAssignedConversation"
       :agents="agents"
       :selected-agent-id="selectedAgentId"
       :mode="agentPanelMode"

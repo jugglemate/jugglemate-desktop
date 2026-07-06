@@ -42,7 +42,7 @@
 ### 3.1 已有资产（保持不动 / 直接复用）
 
 - `common/im.js`：已封装 `init / connect / disconnect / getCurrent`，**作为本次迁移的 IM SDK 网关**。
-- `components/ConversationList.vue`：已接 IM 事件、会话映射、置顶、过滤、头像配色、空态、平台点。**继续作为会话列表的内核**，本次只补 `ConversationMenu` 接入。
+- `components/Conversations.vue`：已接 IM 事件、会话映射、置顶、过滤、头像配色、空态、平台点。**继续作为会话列表的内核**，本次只补 `ConversationMenu` 接入。
 - `views/MainView.vue` + `components/ChatMain.vue`：三栏布局、Agent 建议、接管横幅。`ChatMain` 改造为接入消息列表 + 发送区。
 - 设计 token：`assets/css/hubchat.css`（`--bg-*` / `--text-*` / `--accent` / `--border-*` / `--space-*` / `--radius-*` / `--shadow-*` / `--font-sans` / `--transition-*`）。
 - 通用组件：`Avatar.vue`、`Modal.vue`、`Slideover.vue`、`Input.vue`、`Button.vue`、`Toggle.vue`。
@@ -131,7 +131,7 @@ src/
 新增约 **25** 个组件 / 工具文件，修改约 **6** 个既有文件：
 
 - **新建**：`common/utils.js`、`common/chat-time-utils.js`、`common/emitter.js`、`components/message/message-utils.js`、15 个 `components/message/*` 组件、`MessageMenu.vue`、`ConversationMenu.vue`、`MessageSender.vue`。
-- **修改**：`common/im.js`（扩枚举 / 工具）、`common/enum.js`（补枚举）、`components/ChatMain.vue`（接入 MessageItem + MessageSender）、`components/ConversationList.vue`（接 ConversationMenu 事件）、`views/MainView.vue`（透传会话上下文）。
+- **修改**：`common/im.js`（扩枚举 / 工具）、`common/enum.js`（补枚举）、`components/ChatMain.vue`（接入 MessageItem + MessageSender）、`components/Conversations.vue`（接 ConversationMenu 事件）、`views/MainView.vue`（透传会话上下文）。
 
 ---
 

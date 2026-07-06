@@ -32,7 +32,7 @@
 /register              注册
 /                      主工作台 (MainView)
   ├─ TitleBar          顶部栏（品牌 / 布局切换 / 退出）
-  ├─ ConversationList  左栏：会话列表 + Agent 群组
+  ├─ Conversations  左栏：会话列表 + Agent 群组
   ├─ ChatMain          中栏：当前会话 + 消息流 + 建议 + 输入
   └─ AgentPanel        右栏（三栏布局时）：Agent 列表 + 接管
 ```
@@ -54,7 +54,7 @@
 
 ### 4.2 主工作台
 
-#### 4.2.1 会话列表（`ConversationList`）
+#### 4.2.1 会话列表（`Conversations`）
 
 - **筛选**：全部 / 未读 / 接管中。
 - **置顶条**：当 IM 返回 `isTop` 的会话时，在主列表上方出现头像条。
