@@ -12,6 +12,7 @@ import MessageSender from './MessageSender.vue'
 import MessageMenu from './MessageMenu.vue'
 import ImagePreviewer from './ImagePreviewer.vue'
 import TransferDialog from './TransferDialog.vue'
+import TicketTransferDialog from './TicketTransferDialog.vue'
 import ReplyQuote from './ReplyQuote.vue'
 
 const props = defineProps({
@@ -76,7 +77,14 @@ const props = defineProps({
     default: false
   }
 })
-const emit = defineEmits(['send', 'useSuggestion', 'revokeTakeover', 'clearSuggestion', 'claimTicket'])
+const emit = defineEmits([
+  'send', 'useSuggestion', 'revokeTakeover',
+  'clearSuggestion', 'claimTicket',
+  // 工单转移：弹层 confirm 时携带 { to_assignee_id, note, ticket_id, expected_version }
+  // 父组件 MainView 负责 POST /jmate/tickets/:id/transfer 并刷新本地状态，
+  // 完成后通过 chatMainRef.notifyTransferResult({ ok, message }) 回写弹层。
+  'transferTicket'
+])
 
 const { Event, SentState, MessageType, ConversationType } = im
 
@@ -244,6 +252,48 @@ function onClaimTicket() {
   claiming.value = false
   showClaimBanner.value = false
 }
+
+// --- Ticket transfer ---
+// 工单转移弹层。设计要点：
+//   - 仅在已认领工单（即 isAssignedConversation === true）时显示入口；
+//   - TicketTransferDialog 内部从 juggleim HTTP API 拉群成员作为候选目标；
+//   - 提交时父组件（MainView）负责调 POST /jmate/tickets/:id/transfer 并
+//     处理成功 / 失败 / 版本冲突的副作用；
+//   - expected_version 用于并发冲突检测（17012），如果不传后端会按缺省行为处理。
+const transferOpen = ref(false)
+const transferring = ref(false)
+function openTransfer() {
+  if (!props.conversation?.ticket_id) {
+    console.warn('[ChatMain] openTransfer: missing ticket_id')
+    return
+  }
+  transferOpen.value = true
+}
+function closeTransfer() {
+  if (transferring.value) return  // 提交进行中，禁止关闭
+  transferOpen.value = false
+}
+function onTicketTransferConfirm(payload) {
+  // payload: { user_id, nickname, note }
+  // 服务端契约只用 { assignee_id }，其他字段仅用于本地状态更新。
+  transferring.value = true
+  emit('transferTicket', {
+    ticket_id: props.conversation.ticket_id,
+    assignee_id: payload.user_id,
+    to_assignee_name: payload.nickname || payload.user_id,  // 服务端不回名 → 用 UI 选中的
+    note: payload.note || ''
+  })
+}
+// 切换会话时强制关闭弹层，避免跨 ticket 数据残留
+watch(() => props.conversation?.conversationId, () => {
+  if (transferOpen.value) transferOpen.value = false
+})
+
+// 当前显示用的工单 ID —— 优先用短 ID 友好显示；找不到就退到原始 id
+const ticketDisplayId = computed(() => {
+  const t = props.conversation?.name || ''
+  return t.startsWith('#') ? t : `#${t}`
+})
 
 // ---------------------------------------------------------------------------
 // History
@@ -1276,6 +1326,22 @@ function handleSuggestionClick(suggestion) {
 function onCancelReply() {
   replyTo.value = null
 }
+
+// 对外暴露：父组件 MainView 通过 ref.`notifyTransferResult` 通知弹层处理结果。
+// result = { ok: boolean, message?: string, to_assignee_name?: string }
+function notifyTransferResult(result) {
+  if (!result) return
+  if (result.ok) {
+    transferring.value = false
+    transferOpen.value = false
+  } else {
+    transferring.value = false
+    // 失败保留弹层，等待用户决定（重选 / 关闭）
+    console.warn('[ChatMain] transfer failed:', result.message)
+  }
+}
+
+defineExpose({ notifyTransferResult, openTransfer })
 </script>
 
 <template>
@@ -1323,6 +1389,17 @@ function onCancelReply() {
           <span class="tyn-chat-header__mode-dot"></span>
           <span class="tyn-chat-header__mode-text">{{ modeText }}</span>
         </div>
+        <!-- 工单转移入口：群聊（isGroup）不显示，私聊工单显示 -->
+        <button
+          v-if="!isGroup"
+          class="tyn-btn tyn-btn--sm tyn-btn--outline tyn-chat-header__transfer"
+          type="button"
+          title="转移工单给其他客服（仅群成员可被选为目标）"
+          @click="openTransfer"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 17 20 12 15 7"></polyline><path d="M4 18v-2a4 4 0 0 1 4-4h12"></path></svg>
+          <span>转移</span>
+        </button>
       </div>
       <div class="tyn-chat-header__actions" v-if="!isAssignedConversation">
         <button
@@ -1534,7 +1611,7 @@ function onCancelReply() {
       @close="onMessageMenuClose"
     />
 
-    <!-- Transfer target picker -->
+    <!-- Transfer target picker (合并转发消息用，勿动) -->
     <TransferDialog
       :show="transferState.show"
       :conversations="transferState.targets"
@@ -1542,6 +1619,16 @@ function onCancelReply() {
       title="选择转发的会话"
       @confirm="onTransferConfirm"
       @cancel="transferState.show = false"
+    />
+
+    <!-- 工单转移弹层 —— 把工单转给 ticket 关联 inbox 内其他客服（v3：按 ticket_id 查；仅显示 avatar + nickname） -->
+    <TicketTransferDialog
+      :show="transferOpen"
+      :ticket-id="conversation?.ticket_id || ''"
+      :ticket-display-id="ticketDisplayId"
+      :current-assignee-name="'我'"
+      @confirm="onTicketTransferConfirm"
+      @cancel="closeTransfer"
     />
   </main>
 </template>

@@ -165,11 +165,13 @@ function init() {
   // 在这里 import 然后赋值给 option.upload 即可。
   const option = {
     appkey: CONFIG.APP_KEY,
-    serverList: CONFIG.IM_SERVERS
+    serverList: CONFIG.IM_SERVERS,
+    upload: { urllib: true }
   }
-  if (typeof globalThis.OSS !== 'undefined' && globalThis.OSS) {
-    option.upload = globalThis.OSS
-  }
+  // if (typeof globalThis.OSS !== 'undefined' && globalThis.OSS) {
+  //   option.upload = globalThis.OSS
+  // }
+  console.log('[im] init called — option:', globalThis.OSS )
   juggle = JuggleChat.init(option)
   // Register custom message types. Same names as snailchat's registration so
   // server-side content routing stays compatible. The third flag `isStorage`
@@ -182,7 +184,9 @@ function init() {
       { name: MSG_NAME.ANIMATION_STICKER, isCount: true, isStorage: true },
       { name: MSG_NAME.TYPING_NTF, isStatus: true },
       { name: MSG_NAME.REPLAY_MSG, isCount: true, isStorage: true },
-      { name: MSG_NAME.TICKET_ASSIGN, isCount: true, isStorage: true }
+      { name: MSG_NAME.TICKET_ASSIGN, isCount: true, isStorage: true },
+      // 工单转移广播（后端 broadcast，文末 docs/sprint-1-revised-backend.md §3.2）
+      { name: MSG_NAME.TICKET_REASSIGN, isCount: true, isStorage: true }
     ])
   }
   // Keep the takeover-tag local set in sync with the SDK. The events come
@@ -555,6 +559,7 @@ function msgShortFormat(message) {
   if (name === MSG_NAME.REPLAY_MSG) return '[群接龙]'
   if (name === MSG_NAME.GROUP_NTF) return '[群通知]'
   if (name === MSG_NAME.TICKET_ASSIGN) return formatTicketAssignPreview(content)
+  if (name === MSG_NAME.TICKET_REASSIGN) return formatTicketReassignPreview(content)
   if (name === MSG_NAME.FRIEND_NTF) return '[好友通知]'
   if (name === MessageType.RECALL_INFO) return '[撤回了一条消息]'
   if (name === MessageType.CALL_1V1_FINISHED) return '[通话结束]'
@@ -591,6 +596,18 @@ function parseTicketAssignContent(rawContent) {
     }
   }
   return null
+}
+
+// 工单转移预览：{ticket_id, from:{id,name}, to:{id,name}, note}
+// 兼容两种 payload 形态（来自其他设备广播 vs 本机实时通知）。
+function formatTicketReassignPreview(rawContent) {
+  const payload = parseTicketAssignContent(rawContent)
+  if (!payload) return '[工单转移]'
+  const from = payload.from?.name || ''
+  const to = payload.to?.name || ''
+  if (from && to) return `工单由 ${from} 转给 ${to}`
+  if (to) return `工单已转给 ${to}`
+  return '[工单转移]'
 }
 
 function isUnreadTag(conversation) {

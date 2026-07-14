@@ -14,6 +14,8 @@ const props = defineProps({
   }
 })
 
+console.log('MessageUnknown---------------', props.message)
+
 const raw = computed(() => {
   try {
     return JSON.stringify(props.message?.content ?? null)

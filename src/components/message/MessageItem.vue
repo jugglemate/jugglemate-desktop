@@ -122,9 +122,9 @@ function onPreview(payload) {
 </script>
 
 <template>
-  <!-- Timeline / recall are full-width rows; no avatar or bubble. -->
-  <!-- <MessageTimeline v-if="kind === 'timeline'" :message="message" /> -->
-  <MessageRecall v-if="kind === 'recall'" :message="message" />
+  <!-- Timeline / recall / ticketassign are full-width rows; no avatar or bubble. -->
+  <MessageTimeline v-if="kind === 'timeline'" :message="message" />
+  <MessageRecall v-else-if="kind === 'recall'" :message="message" />
   <MessageTicketAssign v-else-if="kind === 'ticketassign'" :message="message" />
 
   <!-- Default: bubble with avatar. -->

@@ -103,6 +103,8 @@ const currentConversation = ref(null)
 // Conversations 内部维护视图/平台过滤；右侧列表始终是 IM 会话
 // （unassigned 视图通过 exceptTag=assigned 在服务端过滤）。
 const conversationsRef = ref(null)  // 父组件引用，认领后调 refresh() 重拉 IM 会话
+// ChatMain 的 ref —— 转移 / 关闭弹层等回写通过此 ref 调 defineExpose 的方法
+const chatMainRef = ref(null)
 // Two independent Agent-related states. Keep them separate on purpose:
 //   - selectedAgentId: which Agent's style the operator wants to write in.
 //     Drives the suggestion area (the single reply card shown above the
@@ -616,6 +618,106 @@ async function handleClaimTicket(ticketId) {
   }
 }
 
+// === 工单转移 ===
+// 契约：最新 curl 示例（见发起方）
+// body  : { assignee_id }   —— 最小字段，只传目标 user_id
+//        （不带 to_assignee_name / note / expected_version）
+// resp  : { code, data?: { ... } }
+// 错误码同原来：
+//   17012 - version 不匹配
+//   17018 - 目标用户不存在/不可达
+//   17019 - 目标 == 自己
+// 副作用（前端可立即生效）：
+//   * 本地 conv.assignee_id/name/version 同步
+//   * 释放自己 my_ticket tag（这是工单从 mine 视图消失的关键）
+//   * 发送 jgm:ticketreassign 通知（IM 广播）
+//   * 触发会话列表 refresh
+async function handleTransferTicket(payload) {
+  const { ticket_id, assignee_id, to_assignee_name, note } = payload
+  const conv = currentConversation.value
+  if (!ticket_id || !assignee_id) {
+    console.warn("[MainView] handleTransferTicket: missing ticket_id / assignee_id")
+    return
+  }
+  try {
+    // 1) POST 后端（先尝试，不阻塞前端内存态）
+    let resp = null
+    try {
+      resp = await post(SERVER_PATH.TICKET_TRANSFER(ticket_id), {
+        assignee_id
+      })
+    } catch (e) {
+      console.warn("[MainView] TICKET_TRANSFER HTTP failed (backend likely not yet ready)", e)
+    }
+
+    // 2) 服务端错误码检查（仅在 resp.code 存在时校验）
+    if (resp && resp.code !== undefined && resp.code !== 0) {
+      const map = {
+        17012: "工单状态已被他人修改，请刷新后重试",
+        17018: "目标客服不在线或不可达",
+        17019: "不能把工单转给自己"
+      }
+      const msg = map[resp.code] || ("工单转移失败 (" + resp.code + ")")
+      console.warn("[MainView] transfer rejected", resp.code, msg)
+      chatMainRef.value?.notifyTransferResult?.({ ok: false, message: msg })
+      return
+    }
+
+    // 3) 本地 wrapper 同步
+    if (conv && conv.ticket_id === ticket_id) {
+      conv.assignee_id = assignee_id
+      conv.assignee_name = to_assignee_name || ""
+      if (resp?.data?.version !== undefined) conv.version = resp.data.version
+      else conv.version = (conv.version || 0) + 1
+    }
+
+    // 4) 自己 my_ticket tag 释放
+    if (conv) {
+      void im.removeConversationFromMyTicketTag(conv)
+    }
+
+    // 5) 广播 jgm:ticketreassign
+    const user = currentUser.value
+    if (conv && conv.conversationId && user) {
+      const juggle = im.getCurrent()
+      if (juggle && typeof juggle.sendMessage === "function") {
+        const msgPayload = {
+          conversationType: conv.conversationType,
+          conversationId: conv.conversationId,
+          name: MSG_NAME.TICKET_REASSIGN,
+          content: JSON.stringify({
+            ticket_id,
+            from: { id: user.id, name: user.name || "用户" },
+            to:   { id: assignee_id, name: to_assignee_name || "" },
+            note: note || ""
+          })
+        }
+        juggle.sendMessage(msgPayload).catch(e => {
+          console.warn("[MainView] failed to send ticket_reassign", e)
+        })
+      }
+    }
+
+    // 6) 刷新会话列表 + 当前 wrapper
+    if (conversationsRef.value && typeof conversationsRef.value.refresh === "function") {
+      await conversationsRef.value.refresh()
+    }
+    if (conv) {
+      const refreshed = await conversationsRef.value?.refreshOne?.(conv)
+      if (refreshed) currentConversation.value = refreshed
+    }
+
+    // 7) 通知 ChatMain 关闭弹层
+    chatMainRef.value?.notifyTransferResult?.({
+      ok: true,
+      to_assignee_name: to_assignee_name || ""
+    })
+  } catch (e) {
+    console.error("[MainView] handleTransferTicket unexpected", e)
+    chatMainRef.value?.notifyTransferResult?.({ ok: false, message: "工单转移异常" })
+  }
+}
+
 async function handleRevokeTakeover() {
   // Triggered by the chat takeover banner's "收回控制" button. Clears the
   // 托管 state for the *current* conversation and sets mode back to 协助.
@@ -863,6 +965,7 @@ function clearTakeoverForConv(conversationType, conversationId) {
     />
 
     <ChatMain
+      ref="chatMainRef"
       v-if="!hasNoSelection"
       :conversation="currentView === 'conversation' ? currentConversation : null"
       :messages="currentMessages"
@@ -879,6 +982,7 @@ function clearTakeoverForConv(conversationType, conversationId) {
       @revoke-takeover="handleRevokeTakeover"
       @clear-suggestion="handleClearSuggestion"
       @claim-ticket="handleClaimTicket"
+      @transfer-ticket="handleTransferTicket"
     />
 
     <AgentPanel

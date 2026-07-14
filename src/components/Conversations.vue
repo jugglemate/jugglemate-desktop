@@ -5,20 +5,33 @@
  * 整合"二级过滤侧栏 + 会话列表"为一整个组件：
  *   - 左：视图（4 个：我的 / 待分配 / AI 托管中 / 全部）
  *        平台（4 个：全部 / Web / Telegram / JuggleChat）
+ *        工单状态（4 个：全部 / 待处理 / 处理中 / 重新打开）
  *   - 右：会话列表（搜索 / 未读 dot / 时间 / 标签 / 头像）
- * 组合过滤：视图 ∩ 平台
+ * 组合过滤：视图 ∩ 平台 ∩ 工单状态（三维求交）
  *
- * 视图 + 平台都直接走 IM 后端 getConversations：
+ * 视图 / 平台 / 工单状态 都直接走 IM 后端 getConversations：
  *   协议层 QryConversationsReq.tag 是单个 string，没有"多 tag AND"语义，
  *   所以 fetchConversations() 会各发一次请求，
- *   视图带 viewTag、平台带 platformTag，前端按 conversationId 求交集。
+ *   视图带 viewParams、平台带 platformTag、状态带 statusTag，
+ *   前端按 conversationId 求三集合交集。
  * 视图 → buildViewTagParams(view) 返回 { tag?, exceptTag? }：
  *   mine        → { tag: CONVERSATION_TAG_ID.MY_TICKET }
  *   unassigned  → { exceptTag: CONVERSATION_TAG_ID.ASSIGNED } （协议层 exceptTag 字段）
  *   ai_takeover → { tag: TAKEOVER_TAG_ID }
  *   all         → {} （不传 tag / exceptTag）
- * 平台 → platformTag：
- *   all / 其它  → 不传 / 传对应 platform 字符串（web / telegram / jugglechat）
+ * 平台 → platformTag（2026-07-13 修订：见下 buildTagParamForPlatform）
+ * 工单状态 → statusTag（2026-07-13 新增）：
+ *   默认空选中 → undefined （不传 tag）
+ *   pending     → 'ticket_status_pending'
+ *   processing  → 'ticket_status_processing'
+ *   reopen      → 'ticket_status_reopen'
+ *   交互：再点已选项 = 取消选中（与平台列同构），无单独的"全部"项
+ *   （closed 业务态已移除，前端 enum 保留 STATUS_CLOSED 以兼容 server 极端情况）
+ * 平台 → platformTag（2026-07-13 修订：走新的全局 tag）：
+ *   default     → undefined （不传 tag）
+ *   web         → TICKET_GLOBAL_TAG.CHANNEL_WIDGET   ('channel_widget')
+ *   telegram    → TICKET_GLOBAL_TAG.CHANNEL_TELEGRAM ('channel_telegram')
+ *   jugglechat  → TICKET_GLOBAL_TAG.CHANNEL_JUGGLEIM ('channel_juggleim')
  */
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import im from '../common/im'
@@ -28,6 +41,9 @@ import {
   PLATFORM,
   PLATFORM_TAG_ID,
   PLATFORM_META,
+  TICKET_GLOBAL_TAG,
+  TICKET_STATUS_TAG,
+  TICKET_STATUS_TAG_META,
   VIEW,
   VIEW_META
 } from '../common/enum'
@@ -48,12 +64,22 @@ const props = defineProps({
 const emit = defineEmits(['select', 'conversation-op', 'suggestion-received', 'view-change'])
 
 // ---------------------------------------------------------------------------
-// 视图 + 平台状态（默认值：我的 + 全部）
+// 视图 + 平台 + 工单状态（默认值：我的 + 全部 + 全部）
 // ---------------------------------------------------------------------------
 const currentView = ref(VIEW.MINE)
 const currentPlatform = ref(PLATFORM.ALL)
+// 工单状态筛选（2026-07-13 新增）。
+// 默认值联动 currentView：视图=mine 时默认选 processing，unassigned 默认选 pending。
+// 状态列的"全部"用空串 '' 表示，对应 buildTagParamForStatus 返 undefined 不传 tag。
+const currentStatus = ref('')
 
-// 视图 / 平台项：直接由 enum 派生
+const VIEW_DEFAULT_STATUS = {
+  [VIEW.MINE]: TICKET_STATUS_TAG.PROCESSING,
+  [VIEW.UNASSIGNED]: TICKET_STATUS_TAG.PENDING
+  // ai_takeover / all 不默认勾
+}
+
+// 视图 / 平台 / 状态项：直接由 enum 派生
 const viewItems = computed(() =>
   Object.values(VIEW)
     .map((k) => ({ key: k, ...VIEW_META[k] }))
@@ -63,6 +89,14 @@ const platformItems = computed(() =>
   Object.values(PLATFORM)
     .filter((k) => k !== PLATFORM.ALL)
     .map((k) => ({ key: k, ...PLATFORM_META[k] }))
+    .sort((a, b) => a.order - b.order)
+)
+// 状态项：2026-07-13 修订——去掉"全部"项，只渲染 3 个业务态。
+// 默认空选中 = 不传 tag（点击已选项再点 = 取消），交互与平台列完全同构。
+const statusItems = computed(() =>
+  Object.values(TICKET_STATUS_TAG)
+    .filter((k) => k !== TICKET_STATUS_TAG.ALL)
+    .map((k) => ({ key: k, ...TICKET_STATUS_TAG_META[k] }))
     .sort((a, b) => a.order - b.order)
 )
 
@@ -78,7 +112,12 @@ const filterCounts = reactive({
   [VIEW.ALL]: 0,
   [PLATFORM.WEB]: 0,
   [PLATFORM.TELEGRAM]: 0,
-  [PLATFORM.JUGGLECHAT]: 0
+  [PLATFORM.JUGGLECHAT]: 0,
+  // 工单状态桶（2026-07-13 新增），每个 key 来自 TICKET_STATUS_TAG
+  [TICKET_STATUS_TAG.PENDING]: 0,
+  [TICKET_STATUS_TAG.PROCESSING]: 0,
+  [TICKET_STATUS_TAG.REOPEN]: 0
+  // ALL（空串）不参与 reactive key，会和 VIEW.ALL 共享
 })
 
 // "未分配"（exceptTag=assigned）没法用 getTotalUnreadcount 算未读，
@@ -90,6 +129,11 @@ function isUnreadSupported(view) {
 
 function selectView(key) {
   currentView.value = key
+  // 视图切换时按 VIEW_DEFAULT_STATUS 默认联动状态列。
+  // 注意：只在用户没手动调整过状态列时覆盖；这里用"覆盖"语义简化，
+  // 用户切视图后状态会跟着变（与 Chatwoot 行为一致）。
+  // 如果需要更精细的"用户手动选过就不覆盖"语义，可在 currentStatus 上加 dirty flag。
+  currentStatus.value = VIEW_DEFAULT_STATUS[key] || ''
   // 通知父组件：当前激活的二级视图变化了。
   emit('view-change', key)
 }
@@ -99,6 +143,16 @@ function selectView(key) {
 // watch(currentPlatform) 会触发 fetchConversations()，所以这里只要负责状态切换。
 function selectPlatform(key) {
   currentPlatform.value = currentPlatform.value === key ? PLATFORM.ALL : key
+}
+
+// 工单状态列 toggle：与平台列同构——单选 + 再点取消（回到 ALL/空串）。
+//   ALL ('')   → 不传 tag
+//   PENDING    → ticket_status_pending
+//   PROCESSING → ticket_status_processing
+//   REOPEN     → ticket_status_reopen
+// watch(currentStatus) 会触发 fetchConversations()，所以这里只要负责状态切换。
+function selectStatus(key) {
+  currentStatus.value = currentStatus.value === key ? '' : key
 }
 
 // ---------------------------------------------------------------------------
@@ -129,14 +183,29 @@ function buildViewTagParams(view) {
   return {}
 }
 
-// 平台 → juggle.getConversations 的 tag 参数
-//   ALL 不传 tag；其它（web / telegram / jugglechat）直接当 tag 用。
+// 平台 → juggle.getConversations 的 tag 参数（2026-07-13 修订）。
+// 不再直接用 PLATFORM.WEB/TELEGRAM/JUGGLECHAT 当 tag，而是映射到新的全局 tag：
+//   web        → TICKET_GLOBAL_TAG.CHANNEL_WIDGET   ('channel_widget')
+//   telegram   → TICKET_GLOBAL_TAG.CHANNEL_TELEGRAM ('channel_telegram')
+//   jugglechat → TICKET_GLOBAL_TAG.CHANNEL_JUGGLEIM ('channel_juggleim')
+// PLATFORM.* 仍保留作为 UI 标识 key（filter state / filterCounts 键）。
 // 协议层 QryConversationsReq.tag 是单个 string，没有"多 tag AND"的语义，
-// 所以"视图"和"平台"必须各发一次 getConversations，再前端求交集。
-// 这部分逻辑在 fetchConversations() 里实现。
+// 所以"视图 / 平台 / 状态"必须各发一次 getConversations，前端求交集。
 function buildTagParamForPlatform(platform) {
   if (!platform || platform === PLATFORM.ALL) return undefined
-  return platform
+  if (platform === PLATFORM.WEB) return TICKET_GLOBAL_TAG.CHANNEL_WIDGET
+  if (platform === PLATFORM.TELEGRAM) return TICKET_GLOBAL_TAG.CHANNEL_TELEGRAM
+  if (platform === PLATFORM.JUGGLECHAT) return TICKET_GLOBAL_TAG.CHANNEL_JUGGLEIM
+  // 兜底：未知 key 不传 tag，避免打错字符串
+  return undefined
+}
+
+// 工单状态 → juggle.getConversations 的 tag 参数（2026-07-13 新增）
+//   ALL（空串 ''）/ 未选中 → undefined（不传 tag）
+//   pending / processing / reopen → 对应的 TICKET_GLOBAL_TAG.STATUS_* 字符串
+function buildTagParamForStatus(status) {
+  if (!status) return undefined
+  return status
 }
 
 // imConversations 已经是"当前视图 ∩ 当前平台"的最终结果，
@@ -344,15 +413,18 @@ async function fetchConversations() {
   }
   const viewParams = buildViewTagParams(currentView.value)
   const platformTag = buildTagParamForPlatform(currentPlatform.value)
-  console.warn('[Conversations] fetchConversations viewParams=', viewParams, 'platformTag=', platformTag)
+  const statusTag = buildTagParamForStatus(currentStatus.value)
+  console.warn('[Conversations] fetchConversations viewParams=', viewParams,
+    'platformTag=', platformTag, 'statusTag=', statusTag)
   try {
-    // 协议层 QryConversationsReq.tag 是单值，所以视图 / 平台要各发一次。
+    // 协议层 QryConversationsReq.tag 是单值，所以视图 / 平台 / 状态 要各发一次。
     // - 视图：tag / exceptTag 任选其一（buildViewTagParams 决定），无则空对象
     // - 平台：web / telegram / jugglechat 作为 tag
-    // - 至少一方无 tag 时，那一方走"全量"，与另一方做交集。
+    // - 状态：ticket_status_pending / ticket_status_processing / ticket_status_reopen 作为 tag
+    // - 至少一方无 tag 时，那一方走"全量"，与其他方做交集。
     //
     // 另外多发一次"无 tag"的全量拉，专用做 im.takeoverTagConversations 的镜像同步。
-    // 接管 tag 同步必须用全量：视图 + 平台交集之后的 viewConvos 是不完整的，
+    // 接管 tag 同步必须用全量：视图 + 平台 + 状态 交集之后的 list 是不完整的，
     // 如果用它去 sync，会把"其他平台/其他视图里被托管的会话"从本地 Set 里清掉。
     // 这条调用和视图渲染无关，失败也不能影响主流程。
     const calls = [
@@ -360,23 +432,28 @@ async function fetchConversations() {
       platformTag
         ? juggle.getConversations({ tag: platformTag })
         : Promise.resolve(null),
-      // 全量拉，用于接管 tag 同步。和视图/平台过滤无关，单独发。
+      statusTag
+        ? juggle.getConversations({ tag: statusTag })
+        : Promise.resolve(null),
+      // 全量拉，用于接管 tag 同步。和视图/平台/状态过滤无关，单独发。
       juggle.getConversations({}).catch((e) => {
         console.warn('[Conversations] 全量拉取失败，跳过接管 tag 同步', e)
         return null
       })
     ]
-    const [viewList, platformList, fullList] = await Promise.all(calls)
+    const [viewList, platformList, statusList, fullList] = await Promise.all(calls)
     const viewConvos = (viewList?.conversations) || []
     const platformConvos = platformList ? (platformList.conversations || []) : null
-    let list
+    const statusConvos = statusList ? (statusList.conversations || []) : null
+    // 三集合求交：viewConvos ∩ platformConvos（可选）∩ statusConvos（可选）
+    let list = viewConvos
     if (platformConvos) {
-      // 平台带 tag：取两个集合的交集（按 conversationId）。
       const platformIds = new Set(platformConvos.map((c) => c.conversationId || c.id))
-      list = viewConvos.filter((c) => platformIds.has(c.conversationId || c.id))
-    } else {
-      // 平台 = ALL：直接用视图结果。
-      list = viewConvos
+      list = list.filter((c) => platformIds.has(c.conversationId || c.id))
+    }
+    if (statusConvos) {
+      const statusIds = new Set(statusConvos.map((c) => c.conversationId || c.id))
+      list = list.filter((c) => statusIds.has(c.conversationId || c.id))
     }
     // 接管 tag 用全量同步（fullList 才是服务端接管 tag 的真实视图）。
     if (fullList) {
@@ -389,15 +466,17 @@ async function fetchConversations() {
   }
 }
 
-// 视图或平台变化时都重新走 IM 拉取。
+// 视图或平台或工单状态变化时都重新走 IM 拉取。
 // - 视图：mine / unassigned / ai_takeover / all 都会影响 tag 维度，必须重拉。
 // - 平台：web / telegram / jugglechat 也是后端 tag，必须重拉。
+// - 工单状态（2026-07-13 新增）：ticket_status_* 也是后端 tag，必须重拉。
 // 同时刷新未读数（侧栏 filterCounts 徽标）。
-// 切视图/平台：fetchUnreadCounts 自己拉全量分桶，并行即可。
-// 注意：即使切了平台（比如 Web），其它平台（telegram/jugglechat）的未读数仍要保持更新，
-// 不能只算当前平台。fetchUnreadCounts 基于全量列表算所有维度，所以不会丢。
+// 切视图/平台/状态：fetchUnreadCounts 自己拉全量分桶，并行即可。
+// 注意：即使切了状态（比如 processing），其它状态的未读数仍要保持更新，
+// 不能只算当前状态。fetchUnreadCounts 基于全量列表算所有维度，所以不会丢。
 watch(currentView, () => Promise.all([fetchConversations(), fetchUnreadCounts()]))
 watch(currentPlatform, () => Promise.all([fetchConversations(), fetchUnreadCounts()]))
+watch(currentStatus, () => Promise.all([fetchConversations(), fetchUnreadCounts()]))
 
 // 调度刷新未读：debounce 把短时间内的多个事件合并成一次 fetchUnreadCounts。
 // 触发场景：MESSAGE_RECEIVED 风暴、CONVERSATION_CHANGED 多端同步、CONVERSATION_REMOVED 等。
@@ -461,7 +540,8 @@ async function fetchUnreadCounts() {
   }
   // 1) 前端分桶（基于全量列表）
   const local = bucketUnreadByTags(fullList)
-  // 2) 写入：4 视图 + 3 平台 + ALL（VIEW.ALL 和 PLATFORM.ALL 共享 all）
+  // 2) 写入：4 视图 + 3 平台 + 3 工单状态 + ALL
+  //    （VIEW.ALL 和 PLATFORM.ALL 共享 all；工单状态 ALL 用空串 key，不入 reactive map）
   filterCounts[VIEW.MINE] = local.mine
   filterCounts[VIEW.AI_TAKEOVER] = local.takeover
   filterCounts[VIEW.UNASSIGNED] = local.unassigned
@@ -470,6 +550,10 @@ async function fetchUnreadCounts() {
   filterCounts[PLATFORM.TELEGRAM] = local.telegram
   filterCounts[PLATFORM.JUGGLECHAT] = local.jugglechat
   filterCounts[PLATFORM.ALL] = local.all
+  // 工单状态（2026-07-13 新增）：键来自 TICKET_STATUS_TAG.*（非空值）
+  filterCounts[TICKET_STATUS_TAG.PENDING] = local.statusPending
+  filterCounts[TICKET_STATUS_TAG.PROCESSING] = local.statusProcessing
+  filterCounts[TICKET_STATUS_TAG.REOPEN] = local.statusReopen
   // 同步到 im 单例的 inboxUnreadTotal.value，让 NavSidebar 上「收件箱」badge 跟着刷新。
   // 触发条件：fetchUnreadCounts 本身已经被 onStateChanged / watch(currentView|Platform)
   // / scheduleUnreadRefresh（新消息 / CONVERSATION_CHANGED / REMOVED / 清未读）
@@ -484,7 +568,8 @@ async function fetchUnreadCounts() {
 // 也兼容 mapConversation 映射后的对象（c.unread = c.unreadCount），用 ?? 双兜底。
 function bucketUnreadByTags(list) {
   let mine = 0, takeover = 0, assigned = 0,
-      web = 0, telegram = 0, jugglechat = 0, all = 0
+      web = 0, telegram = 0, jugglechat = 0, all = 0,
+      statusPending = 0, statusProcessing = 0, statusReopen = 0
   for (const c of list) {
     // 兼容两种字段：mapConversation 后的 c.unread，原 SDK 对象的 c.unreadCount
     const unread = Number(c.unread ?? c.unreadCount ?? 0)
@@ -504,13 +589,21 @@ function bucketUnreadByTags(list) {
     if (plat === PLATFORM_TAG_ID.WEB) web += unread
     else if (plat === PLATFORM_TAG_ID.TELEGRAM) telegram += unread
     else if (plat === PLATFORM_TAG_ID.JUGGLECHAT) jugglechat += unread
+    // 工单状态分桶（2026-07-13 新增）：基于 TICKET_GLOBAL_TAG.STATUS_* 字符串
+    const isStatusPending = tags.some(t => t?.id === TICKET_GLOBAL_TAG.STATUS_PENDING)
+    const isStatusProcessing = tags.some(t => t?.id === TICKET_GLOBAL_TAG.STATUS_PROCESSING)
+    const isStatusReopen = tags.some(t => t?.id === TICKET_GLOBAL_TAG.STATUS_REOPEN)
+    if (isStatusPending) statusPending += unread
+    if (isStatusProcessing) statusProcessing += unread
+    if (isStatusReopen) statusReopen += unread
     all += unread
   }
   // UNASSIGNED = 总 - assigned
   const unassigned = Math.max(0, all - assigned)
   return {
     mine, takeover, unassigned, all,
-    web, telegram, jugglechat, assigned
+    web, telegram, jugglechat, assigned,
+    statusPending, statusProcessing, statusReopen
   }
 }
 
@@ -692,6 +785,26 @@ defineExpose({
           class="conv-filter__item"
           :class="{ 'conv-filter__item--active': currentPlatform === it.key }"
           @click="selectPlatform(it.key)"
+        >
+          <span class="conv-filter__dot" :style="{ background: it.color }"></span>
+          <span class="conv-filter__item-label">{{ it.label }}</span>
+          <span
+            v-if="filterCounts[it.key]"
+            class="conv-filter__item-badge"
+          >{{ filterCounts[it.key] }}</span>
+        </button>
+      </div>
+
+      <!-- 工单状态组（2026-07-13 新增，2026-07-13 修订：去掉"全部"项）：
+           与平台列同构——单选 + 再点取消（回到空选中 = 不传 tag） -->
+      <div class="conv-filter__group">
+        <div class="conv-filter__group-title">工单状态</div>
+        <button
+          v-for="it in statusItems"
+          :key="it.key"
+          class="conv-filter__item"
+          :class="{ 'conv-filter__item--active': currentStatus === it.key }"
+          @click="selectStatus(it.key)"
         >
           <span class="conv-filter__dot" :style="{ background: it.color }"></span>
           <span class="conv-filter__item-label">{{ it.label }}</span>

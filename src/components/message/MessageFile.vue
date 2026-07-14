@@ -103,7 +103,7 @@ function onClick() {
   gap: 10px;
   min-width: 220px;
   max-width: 320px;
-  padding: 6px 0;
+  padding: 10px;
   border: 0;
   border-radius: var(--r);
   font-family: inherit;

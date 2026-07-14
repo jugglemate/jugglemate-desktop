@@ -19432,6 +19432,7 @@ let init = config => {
     log = {},
     serverList = []
   } = config;
+  console.log('JGChat init--------', config);
   let uploadType = common.checkUploadType(upload);
   let sessionId = common.getSessionId();
   let logger = Logger({

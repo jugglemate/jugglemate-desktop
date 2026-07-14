@@ -19,6 +19,17 @@ const SERVER_PATH = {
   // Ticket APIs
   TICKET_LIST: buildUrl('/jmate/tickets/list'),
   TICKET_CLAIM: (ticketId) => buildUrl(`/jmate/tickets/${ticketId}/claim`),
+  // 工单转移提交：POST /jmate/tickets/:ticketId/transfer
+  //   body: { to_assignee_id, to_assignee_name, note, expected_version }
+  //   resp: { code, data: { ticket_id, old_..., new_..., version, updated_at } }
+  TICKET_TRANSFER: (ticketId) => buildUrl(`/jmate/tickets/${ticketId}/transfer`),
+
+  // 工单内成员列表（工单转移的候选目标）。ticket_id 不为空，约定等同于会话 id。
+  // GET /jmate/tickets/inboxmembers/list?ticket_id=<ticket_id>&limit=<n>[&start_id=<next_start_id>]
+  //   resp.data.items: [{ user_id, username, avatar, email }]
+  //   resp.data.next_start_id: number | null（分页游标，null 表示最后一页）
+  // 见 src/services/agent.js::fetchTransferCandidates
+  TICKET_INBOX_MEMBERS_LIST: buildUrl('/jmate/tickets/inboxmembers/list')
 }
 
 async function get(url, params = {}) {

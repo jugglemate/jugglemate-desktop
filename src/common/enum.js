@@ -43,7 +43,12 @@ export const MSG_NAME = {
   ANIMATION_STICKER: 'snl:sticker',
   TYPING_NTF: 'snl:typing',
   REPLAY_MSG: 'snl:replay',
-  TICKET_ASSIGN: 'jgm:ticketassign'
+  TICKET_ASSIGN: 'jgm:ticketassign',
+  // 工单转移广播消息名。命名沿用 TICKET_ASSIGN 的无下划线风格以保持
+  // 与 jugglemate-server 现存自定义消息名规范一致（待后端最终确认）。
+  // payload 见 docs/sprint-1-revised-backend.md §3.2：
+  //   { ticket_id, from:{id,name}, to:{id,name}, note }
+  TICKET_REASSIGN: 'jgm:ticketreassign'
 }
 
 export const TYPING_STATUS = {
@@ -83,6 +88,59 @@ export const MESSAGE_BURN_TYPE = {
 export const CONVERSATION_TAG_ID = {
   ASSIGNED: 'assigned',
   MY_TICKET: 'my_ticket'
+}
+
+// IM 全局 tag —— 工单分配 / 平台 / 工单状态 三类会话 tag 的统一枚举。
+// 这些 id 是和 IM 服务端约定好的固定字符串，不要随意改。
+// 列表侧栏筛选用：视图（VIEW）/ 平台（PLATFORM）/ 工单状态（TICKET_STATUS_TAG）。
+//   - 视图（mine/unassigned）走 CONVERSATION_TAG_ID.ASSIGNED + MY_TICKET，
+//     通过协议层的 tag / exceptTag 字段实现（语义上不属于"全局 tag"）。
+//   - 平台 / 工单状态 这两类走全局 tag，用 QryConversationsReq.tag 单值查询。
+//
+// 工单分配维度（保留以兼容 inbox_member 早期协议，未来会废弃）：
+//   ASSIGNED / UNASSIGNED
+//
+// 工单状态维度（业务态 4 + 隐藏 1）：
+//   STATUS_PENDING / STATUS_PROCESSING / STATUS_REOPEN：业务态，前端可见
+//   STATUS_CLOSED：隐藏态，前端 enum 保留以兼容 server（server 实际不打此 tag，
+//                  closed 状态仅靠 tickets.status 字段表达，列表接口层过滤）
+//
+// 平台维度：
+//   CHANNEL_WIDGET / CHANNEL_TELEGRAM / CHANNEL_JUGGLEIM
+export const TICKET_GLOBAL_TAG = {
+  // 工单分配
+  ASSIGNED: 'assigned',
+  UNASSIGNED: 'unassigned',
+
+  // 工单状态（4 态业务 + 1 隐藏）
+  STATUS_PENDING: 'ticket_status_pending',
+  STATUS_PROCESSING: 'ticket_status_processing',
+  STATUS_CLOSED: 'ticket_status_closed',
+  STATUS_REOPEN: 'ticket_status_reopen',
+
+  // 平台
+  CHANNEL_WIDGET: 'channel_widget',
+  CHANNEL_TELEGRAM: 'channel_telegram',
+  CHANNEL_JUGGLEIM: 'channel_juggleim'
+}
+
+// 工单状态筛选维度选项（用于 Conversations 侧栏"工单状态"过滤列）。
+// 与 PLATFORM_META 同构：label / color / order 决定渲染，dot 用于未读徽标。
+// `key=''` 代表"全部"，等价于不携带 tag 走"不过滤"路径。
+// closed 不在前端 UI 出现，仅 enum 保留。
+export const TICKET_STATUS_TAG = {
+  ALL: '',                                       // 空 = 不传 tag
+  PENDING: TICKET_GLOBAL_TAG.STATUS_PENDING,
+  PROCESSING: TICKET_GLOBAL_TAG.STATUS_PROCESSING,
+  REOPEN: TICKET_GLOBAL_TAG.STATUS_REOPEN
+  // CLOSED 故意不暴露
+}
+
+export const TICKET_STATUS_TAG_META = {
+  [TICKET_STATUS_TAG.ALL]:        { label: '全部',     color: '',        order: 0 },
+  [TICKET_STATUS_TAG.PENDING]:    { label: '待处理',   color: '#FF8800', order: 1 },
+  [TICKET_STATUS_TAG.PROCESSING]: { label: '处理中',   color: '#1E88FF', order: 2 },
+  [TICKET_STATUS_TAG.REOPEN]:     { label: '重新打开', color: '#7C4DFF', order: 3 }
 }
 
 // 左侧会话分类。和 `filter` ref 的取值一一对应。
