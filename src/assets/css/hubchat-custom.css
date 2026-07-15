@@ -1750,20 +1750,13 @@
   30%          { transform: translateY(-3px); opacity: 1; }
 }
 
-.tyn-chat-header__actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* Header agent-mode —— 3 状态胶囊（human / assist / auto）
-   data-mode 切换配色，不绑点击。 */
+/* Header actions 行：右侧靠右、横向排列 agent-mode 胶囊 + 工单转移按钮
+   （旧实现 `flex-direction: column` 让两个按钮换行展示，已合并成单行）。 */
 .tyn-chat-header__actions {
   margin-left: auto;
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 3px;
+  align-items: center;
+  gap: 8px;
   flex-shrink: 0;
 }
 
@@ -2605,6 +2598,7 @@
 .tyn-btn--outline:hover {
   background: var(--primary-hover);
   border-color: var(--text-3);
+  color: #fff;   /* hover 时文字变白，避免浅底 + 灰字看不清（chat header 转移按钮等） */
 }
 
 .tyn-btn--danger-outline {

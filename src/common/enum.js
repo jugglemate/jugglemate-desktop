@@ -137,10 +137,79 @@ export const TICKET_STATUS_TAG = {
 }
 
 export const TICKET_STATUS_TAG_META = {
-  [TICKET_STATUS_TAG.ALL]:        { label: '全部',     color: '',        order: 0 },
-  [TICKET_STATUS_TAG.PENDING]:    { label: '待处理',   color: '#FF8800', order: 1 },
-  [TICKET_STATUS_TAG.PROCESSING]: { label: '处理中',   color: '#1E88FF', order: 2 },
-  [TICKET_STATUS_TAG.REOPEN]:     { label: '重新打开', color: '#7C4DFF', order: 3 }
+  [TICKET_STATUS_TAG.ALL]: {
+    label: '全部',
+    color: '',
+    order: 0,
+    icon: ''
+  },
+  [TICKET_STATUS_TAG.PENDING]: {
+    label: '待处理',
+    color: '#FF8800',
+    order: 1,
+    // 钟表：表示「待处理 / 等待中」
+    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><polyline points="12 7 12 12 16 14"></polyline></svg>'
+  },
+  [TICKET_STATUS_TAG.PROCESSING]: {
+    label: '处理中',
+    color: '#1E88FF',
+    order: 2,
+    // 回旋箭头：表示「流转中 / 进行中」
+    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3.5-7.1"></path><polyline points="21 4 21 10 15 10"></polyline></svg>'
+  },
+  [TICKET_STATUS_TAG.REOPEN]: {
+    label: '重新打开',
+    color: '#7C4DFF',
+    order: 3,
+    // 反向回旋箭头：表示「回到起点 / 重新开始」
+    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>'
+  }
+}
+
+// 工单状态数值枚举（来自 backend /jmate/customers/tickets 等接口）。
+//  - 0  pending    待处理（未分配 / 待分配 — UI 文案采用「待处理」与列表筛选列保持一致）
+//  - 1  processing 处理中（已分配）
+//  - 2  resolved   已解决
+//  - 3  reopened   重新打开
+//  - 99 closed     隐藏终态，UI 不展示（保留以兼容 server 极端返回）
+export const TICKET_STATUS = {
+  PENDING:   0,
+  PROCESSING: 1,
+  RESOLVED:  2,
+  REOPENED:  3,
+  CLOSED:    99
+}
+
+// TICKET_STATUS 数值 → UI 元数据（label / icon / color）。
+//  - icon: 16x16 stroke 风格 SVG path 字符串，电流风格与 nav-rail / 视图列同源。
+//  - color: 主色（不再用作 chip 背景色 —— AgentPanel 历史工单的状态徽标用 icon + label，
+//            不再依赖背景色块，遵循用户「去掉颜色用 icon」的要求）。
+export const TICKET_STATUS_META = {
+  [TICKET_STATUS.PENDING]: {
+    label: '待处理',
+    color: '#FF8800',
+    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><polyline points="12 7 12 12 16 14"></polyline></svg>'
+  },
+  [TICKET_STATUS.PROCESSING]: {
+    label: '处理中',
+    color: '#1E88FF',
+    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3.5-7.1"></path><polyline points="21 4 21 10 15 10"></polyline></svg>'
+  },
+  [TICKET_STATUS.RESOLVED]: {
+    label: '已解决',
+    color: '#07C160',
+    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>'
+  },
+  [TICKET_STATUS.REOPENED]: {
+    label: '重新打开',
+    color: '#7C4DFF',
+    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>'
+  },
+  [TICKET_STATUS.CLOSED]: {
+    label: '已关闭',
+    color: '#9CA3AF',
+    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect><line x1="9" y1="9" x2="15" y2="15"></line><line x1="15" y1="9" x2="9" y2="15"></line></svg>'
+  }
 }
 
 // 左侧会话分类。和 `filter` ref 的取值一一对应。
@@ -173,23 +242,23 @@ export const PLATFORM = {
 // 顺序决定侧栏渲染顺序，颜色给会话列表里的 plat-dot 用。
 export const PLATFORM_META = {
   [PLATFORM.ALL]:        { label: '全部',     color: '',            order: 0 },
-  [PLATFORM.WEB]:        { label: 'Web',      color: '#000000',     order: 1 },
+  [PLATFORM.WEB]:        { label: 'Web',      color: '#7C3AED',     order: 1 },
   [PLATFORM.TELEGRAM]:   { label: 'Telegram', color: '#FF2442',     order: 2 },
   [PLATFORM.JUGGLECHAT]: { label: 'JuggleChat', color: '#07C160',   order: 3 }
 }
 
-// "AI 托管中" = 会话被当前 agent 接管（im.js 的 TAKEOVER_TAG_ID）。
-// 直接复用 im.isInTakeoverTag(c) — 不再单独定义 enum value，沿用 takeover 这条轴。
-// 历史值 'takeover' / 'pending_reply' / 'ai_takeover' 保留为 alias，向后兼容旧代码。
+// 历史值 'takeover' / 'pending_reply' / 'ai_takeover' 已下线：
+// 「AI 托管中」视图已移除，不再作为会话列表的过滤维度。
+// 接管 tag（jm_takeover）相关的 SDK / IM 协议层逻辑保留，
+// 仅 UI 不再渲染这条分类（参见 im.js TAKEOVER_TAG_ID 注释）。
 export const VIEW = {
   MINE: 'mine',                 // 我的（tag = my_ticket）
   UNASSIGNED: 'unassigned',     // 待分配（tag != assigned）
-  AI_TAKEOVER: 'ai_takeover',   // AI 托管中 = 接管中（im.isInTakeoverTag）
   ALL: 'all'                    // 全部
 }
 
 // 视图展示元信息。label 给 UI 看，icon 是 24x24 stroke 风格 SVG path 字符串。
-// 视图 4 个：我的 / 待分配 / AI 托管中 / 全部。
+// 视图 3 个：我的 / 待分配 / 全部。
 //
 // 视觉基线：1.6 stroke-width、stroke-linecap=round、stroke-linejoin=round、currentColor
 // ——和 nav-rail 里现有图标的风格保持一致。
@@ -202,14 +271,9 @@ export const VIEW_META = {
     label: '待分配',
     order: 1,
     icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="23" y1="11" x2="17" y2="11"></line></svg>'  },
-  [VIEW.AI_TAKEOVER]: {
-    label: 'AI 托管中',
-    order: 2,
-    // 机器人头 + 身体：圆角方脸 + 眼睛 + 天线 + 底盘——明确传达"AI 在自动应答"
-    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"></rect><circle cx="12" cy="5" r="2"></circle><path d="M12 7v4"></path></svg>'  },
   [VIEW.ALL]: {
     label: '全部',
-    order: 3,
+    order: 2,
     // 三个层叠的圆点 / 列表：左侧 3 个不同状态的小圆，右侧 2 条横线，传达"所有会话"
     icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6"  r="1.4" fill="currentColor" stroke="none"/><circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="5" cy="18" r="1.4" fill="currentColor" stroke="none"/><line x1="10" y1="6"  x2="20" y2="6"/><line x1="10" y1="12" x2="20" y2="12"/><line x1="10" y1="18" x2="20" y2="18"/></svg>'
   }

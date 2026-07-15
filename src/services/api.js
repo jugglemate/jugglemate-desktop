@@ -29,7 +29,19 @@ const SERVER_PATH = {
   //   resp.data.items: [{ user_id, username, avatar, email }]
   //   resp.data.next_start_id: number | null（分页游标，null 表示最后一页）
   // 见 src/services/agent.js::fetchTransferCandidates
-  TICKET_INBOX_MEMBERS_LIST: buildUrl('/jmate/tickets/inboxmembers/list')
+  TICKET_INBOX_MEMBERS_LIST: buildUrl('/jmate/tickets/inboxmembers/list'),
+
+  // 客户历史工单：GET /jmate/customers/tickets?customer_id=<id>
+  //   resp.data.items: [{ ticket_id, source_id, customer_id, customer, inbox_id,
+  //                        channel_type, assignee_id, assignee, status,
+  //                        created_time, updated_time }, ...]
+  //   resp.data.next_start_id: number | null（分页游标，0/null 即无下一页）
+  CUSTOMER_TICKETS: buildUrl('/jmate/customers/tickets'),
+
+  // 客户详情：GET /jmate/customers/:id
+  //   resp.data: { customer_id, nickname, avatar, phone, email, identifier,
+  //                channels, first_seen_at, last_seen_at, total_sessions, csat_avg }
+  CUSTOMER_DETAIL: (id) => buildUrl(`/jmate/customers/${id}`)
 }
 
 async function get(url, params = {}) {

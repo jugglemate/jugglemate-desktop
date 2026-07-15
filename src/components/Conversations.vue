@@ -3,7 +3,7 @@
  * Conversations
  * ------------------------------------------------------------------
  * 整合"二级过滤侧栏 + 会话列表"为一整个组件：
- *   - 左：视图（4 个：我的 / 待分配 / AI 托管中 / 全部）
+ *   - 左：视图（3 个：我的 / 待分配 / 全部）
  *        平台（4 个：全部 / Web / Telegram / JuggleChat）
  *        工单状态（4 个：全部 / 待处理 / 处理中 / 重新打开）
  *   - 右：会话列表（搜索 / 未读 dot / 时间 / 标签 / 头像）
@@ -17,8 +17,7 @@
  * 视图 → buildViewTagParams(view) 返回 { tag?, exceptTag? }：
  *   mine        → { tag: CONVERSATION_TAG_ID.MY_TICKET }
  *   unassigned  → { exceptTag: CONVERSATION_TAG_ID.ASSIGNED } （协议层 exceptTag 字段）
- *   ai_takeover → { tag: TAKEOVER_TAG_ID }
- *   all         → {} （不传 tag / exceptTag）
+  *   all         → {} （不传 tag / exceptTag）
  * 平台 → platformTag（2026-07-13 修订：见下 buildTagParamForPlatform）
  * 工单状态 → statusTag（2026-07-13 新增）：
  *   默认空选中 → undefined （不传 tag）
@@ -76,7 +75,7 @@ const currentStatus = ref('')
 const VIEW_DEFAULT_STATUS = {
   [VIEW.MINE]: TICKET_STATUS_TAG.PROCESSING,
   [VIEW.UNASSIGNED]: TICKET_STATUS_TAG.PENDING
-  // ai_takeover / all 不默认勾
+  // all 不默认勾
 }
 
 // 视图 / 平台 / 状态项：直接由 enum 派生
@@ -108,7 +107,6 @@ const statusItems = computed(() =>
 const filterCounts = reactive({
   [VIEW.MINE]: 0,
   [VIEW.UNASSIGNED]: 0,   // 协议层不支持 exceptTag，固定为 0
-  [VIEW.AI_TAKEOVER]: 0,
   [VIEW.ALL]: 0,
   [PLATFORM.WEB]: 0,
   [PLATFORM.TELEGRAM]: 0,
@@ -174,12 +172,10 @@ const conversations = reactive([])
 // "未分配"用 exceptTag=assigned 才符合协议语义（不要把 '!' 前缀塞进 tag）。
 //   mine        → { tag: MY_TICKET }
 //   unassigned  → { exceptTag: ASSIGNED }
-//   ai_takeover → { tag: jm_takeover }
 //   all         → {}
 function buildViewTagParams(view) {
   if (view === VIEW.MINE) return { tag: CONVERSATION_TAG_ID.MY_TICKET }
   if (view === VIEW.UNASSIGNED) return { exceptTag: CONVERSATION_TAG_ID.ASSIGNED }
-  if (view === VIEW.AI_TAKEOVER) return { tag: im.TAKEOVER_TAG_ID }
   return {}
 }
 
@@ -281,7 +277,6 @@ function mapConversation(c) {
     unread: c.unreadCount || 0,
     unreadTag: c.unreadTag,
     isTop: !!c.isTop,
-    isTakeover: im.isInTakeoverTag(c),
     // juggle.getConversations 返回的 c.platform 是小写字符串（web / telegram / jugglechat）。
     // 模板里 conv-item__plat-dot 用这个字段决定颜色。
     platform: (c.platform || '').toLowerCase(),
@@ -467,7 +462,7 @@ async function fetchConversations() {
 }
 
 // 视图或平台或工单状态变化时都重新走 IM 拉取。
-// - 视图：mine / unassigned / ai_takeover / all 都会影响 tag 维度，必须重拉。
+// - 视图：mine / unassigned / all 都会影响 tag 维度，必须重拉。
 // - 平台：web / telegram / jugglechat 也是后端 tag，必须重拉。
 // - 工单状态（2026-07-13 新增）：ticket_status_* 也是后端 tag，必须重拉。
 // 同时刷新未读数（侧栏 filterCounts 徽标）。
@@ -499,7 +494,6 @@ function scheduleUnreadRefresh(delay = 100) {
 // 数据源：imConversations 里的 _raw.tags（来自 getConversations 协议层）。
 // tag 字段约定：
 //   my_ticket      → VIEW.MINE
-//   jm_takeover    → VIEW.AI_TAKEOVER
 //   assigned       → 取反 = VIEW.UNASSIGNED（不带 assigned 的会话）
 //   web/telegram/jugglechat → PLATFORM 对应项
 //
@@ -543,7 +537,6 @@ async function fetchUnreadCounts() {
   // 2) 写入：4 视图 + 3 平台 + 3 工单状态 + ALL
   //    （VIEW.ALL 和 PLATFORM.ALL 共享 all；工单状态 ALL 用空串 key，不入 reactive map）
   filterCounts[VIEW.MINE] = local.mine
-  filterCounts[VIEW.AI_TAKEOVER] = local.takeover
   filterCounts[VIEW.UNASSIGNED] = local.unassigned
   filterCounts[VIEW.ALL] = local.all
   filterCounts[PLATFORM.WEB] = local.web
@@ -567,7 +560,7 @@ async function fetchUnreadCounts() {
 // 接受 getConversations 返回的**原始对象**（c.unreadCount / c.tags / c.platform），
 // 也兼容 mapConversation 映射后的对象（c.unread = c.unreadCount），用 ?? 双兜底。
 function bucketUnreadByTags(list) {
-  let mine = 0, takeover = 0, assigned = 0,
+  let mine = 0, assigned = 0,
       web = 0, telegram = 0, jugglechat = 0, all = 0,
       statusPending = 0, statusProcessing = 0, statusReopen = 0
   for (const c of list) {
@@ -579,10 +572,8 @@ function bucketUnreadByTags(list) {
     // 把 converTags 的 {tag, tagName, tagType} 映射成 {id, name, type}）。
     // 之前用 t?.tag 是 SDK 内部变量名，写错了 → 分桶永远 0。
     const isMine = tags.some(t => t?.id === CONVERSATION_TAG_ID.MY_TICKET)
-    const isTakeover = tags.some(t => t?.id === im.TAKEOVER_TAG_ID)
     const isAssigned = tags.some(t => t?.id === CONVERSATION_TAG_ID.ASSIGNED)
     if (isMine) mine += unread
-    if (isTakeover) takeover += unread
     if (isAssigned) assigned += unread
     // platform 字段：mapConversation 后是 toLowerCase()，原始对象可能大小写不一
     const plat = (c.platform || '').toLowerCase()
@@ -601,7 +592,7 @@ function bucketUnreadByTags(list) {
   // UNASSIGNED = 总 - assigned
   const unassigned = Math.max(0, all - assigned)
   return {
-    mine, takeover, unassigned, all,
+    mine, unassigned, all,
     web, telegram, jugglechat, assigned,
     statusPending, statusProcessing, statusReopen
   }
@@ -806,7 +797,14 @@ defineExpose({
           :class="{ 'conv-filter__item--active': currentStatus === it.key }"
           @click="selectStatus(it.key)"
         >
-          <span class="conv-filter__dot" :style="{ background: it.color }"></span>
+          <!-- icon 替代色块：默认 currentColor（继承自 .conv-filter__item 黑色），
+               选中态由 .conv-filter__item--active 把 color 切到 var(--primary)。 -->
+          <span
+            v-if="it.icon"
+            class="conv-filter__icon"
+            aria-hidden="true"
+            v-html="it.icon"
+          ></span>
           <span class="conv-filter__item-label">{{ it.label }}</span>
           <span
             v-if="filterCounts[it.key]"
@@ -875,12 +873,8 @@ defineExpose({
                   <span class="conv-item__unread-num">{{ convo.unread > 99 ? '99+' : convo.unread }}</span>
                 </span>
               </div>
-              <div v-if="convo.platform || convo.isTakeover" class="conv-item__tags">
-                <span
-                  v-if="convo.platform"
-                  class="tag tag-info"
-                >{{ PLATFORM_META[convo.platform?.toLowerCase?.()]?.label || convo.platform }}</span>
-                <span v-if="convo.isTakeover" class="tag tag-ai">AI</span>
+              <div v-if="convo.platform" class="conv-item__tags">
+                <span class="tag tag-info">{{ PLATFORM_META[convo.platform?.toLowerCase?.()]?.label || convo.platform }}</span>
               </div>
             </div>
           </div>
@@ -945,13 +939,14 @@ defineExpose({
   padding: 7px 10px 7px 13px;
   border: 0;
   background: transparent;
-  color: var(--text-2);
+  color: var(--text-1);   /* 默认深色：让 status icon 走 currentColor 时也是黑/深灰 */
   font-size: 13px;
   border-radius: var(--r);
   cursor: pointer;
   text-align: left;
   transition: var(--t-fast);
 }
+.conv-filter__item:hover { color: var(--text-1); }   /* 显式保留 hover 颜色 */
 .conv-filter__item-icon {
   width: 16px;
   height: 16px;
@@ -1003,6 +998,27 @@ defineExpose({
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+}
+/* icon 替代色块（工单状态列）。
+   SVG 走 currentColor，颜色由 inline style 注入；和 .conv-filter__dot
+   同样占用一行 8x8 的位置，但承载 icon。 */
+.conv-filter__icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.conv-filter__icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .conv-filter__item-label {
   flex: 1;
@@ -1260,6 +1276,5 @@ defineExpose({
   line-height: 1.6;
   flex-shrink: 0;
 }
-.tag-ai { background: var(--ai-soft); color: var(--ai); }
 .tag-info { background: var(--info-soft); color: var(--info); }
 </style>

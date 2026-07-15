@@ -12,7 +12,10 @@ import Toast from '../components/Toast.vue'
 import im from '../common/im'
 import userService from '../services/user'
 import { SERVER_PATH, get, post } from '../services/api'
-import { MSG_NAME, SESSION_FILTER } from '../common/enum'
+import {
+  MSG_NAME, SESSION_FILTER,
+  TICKET_GLOBAL_TAG, PLATFORM, PLATFORM_TAG_ID, PLATFORM_META
+} from '../common/enum'
 
 const router = useRouter()
 const juggle = im.getCurrent()
@@ -105,23 +108,14 @@ const currentConversation = ref(null)
 const conversationsRef = ref(null)  // 父组件引用，认领后调 refresh() 重拉 IM 会话
 // ChatMain 的 ref —— 转移 / 关闭弹层等回写通过此 ref 调 defineExpose 的方法
 const chatMainRef = ref(null)
-// Two independent Agent-related states. Keep them separate on purpose:
-//   - selectedAgentId: which Agent's style the operator wants to write in.
-//     Drives the suggestion area (the single reply card shown above the
-//     composer). Toggled by clicking the Agent row body. Global — survives
-//     a conversation switch (sticky voice).
-//   - takeoverByConv: per-conversation map of { conversationKey → agentId }
-//     tracking which Agent is "driving" each conversation. The chat tip +
-//     takeover banner read this for the *current* conversation only. Any
-//     number of conversations can be in 托管 at once, each driven by a
-//     (possibly different) Agent — they're surfaced in the sidebar's
-//     "接管中" filter.
+// 当前会话的写作 agent（建议区文案风格）。selectedAgentId 是全局 sticky 选择，
+// 切会话不重置。Agent 列表不再在 UI 渲染（见 AgentPanel 改造），但 agents 数据
+// 本身仍在 MainView 内部持有，供 selectedAgent 计算 & 会话 session 解析用。
 //
-// They are NOT coupled. You can pick an Agent to write in its voice
-// without handing the conversation over, and you can hand over a
-// conversation to an Agent without necessarily using its reply as a draft.
+// 备注：会话级「托管」(takeover) 已被产品下线 —— 接管按钮、对话接管 banner、
+// session.auto_mode 推到 2 的客户端逻辑全部移除，仅保留服务端回写的 auto_mode
+// 读取，让 ChatMain 的模式提示能跟随服务端状态。
 const selectedAgentId = ref(null)
-const takeoverByConv = reactive(new Map())  // Map<convKey, { conversation, agentId }>
 
 // Session state — created/looked-up when conversation is selected,
 // updated when agent is switched, and used for takeover toggle.
@@ -138,38 +132,9 @@ const selectedAgent = computed(
 )
 // 当前会话的 AI 辅助模式：0=不使用, 1=协同模式, 2=托管模式
 const autoMode = computed(() => currentSession.value?.auto_mode ?? 0)
-// Agent 面板模式：'off' | 'collaborative' | 'managed'
-//   off           = 人工回复（不显式标注，列表行无 active 态）
-//   collaborative = 协助模式（agent 给出建议，运营手发）
-//   managed       = 托管模式（agent 自动接管会话）
-const agentPanelMode = computed(() => {
-  if (autoMode.value === 2) return 'managed'
-  if (autoMode.value === 1) return 'collaborative'
-  return 'off'
-})
-const takenOverAgent = computed(() => {
-  if (!currentConversation.value) return null
-  const key = getConvKeyForTakeover(currentConversation.value)
-  if (!key) return null
-  const entry = takeoverByConv.get(key)
-  if (!entry) return null
-  return agents.find((a) => a.id === entry.agentId) || null
-})
-// Same lookup as takenOverAgent, but returns the raw id — used to drive
-// the AgentPanel's "hosted" indicator (which Agent row gets the 托管中
-// pill), which expects an id, not an agent object.
-// 显式 ref + 触发器，绕开 reactive Map 反应性可能的边界情况。
-//   takeoverVersion 在 setTakeover / clearTakeover / 切会话时 ++，让 computed 必然重算。
-//   currentTakenOverAgentId 仍然只读 takeoverByConv，但版本号变化是依赖。
-const takeoverVersion = ref(0)
-const currentTakenOverAgentId = computed(() => {
-  // 把 takeoverVersion 放进依赖追踪
-  void takeoverVersion.value
-  if (!currentConversation.value) return null
-  const key = getConvKeyForTakeover(currentConversation.value)
-  if (!key) return null
-  return takeoverByConv.get(key)?.agentId || null
-})
+// 服务端推送的 session.auto_mode 仍由 ChatMain 读取（控制 head status tip
+// 的 human/assist/auto 三态展示）。本地不再维护 takeoverByConv ——
+// 客户端已无入口去推 auto_mode 到 2，按钮已下线。
 // Data — agents. Conversation data is owned by Conversations.
 const agents = reactive([])
 const agentsLoaded = ref(false)
@@ -282,22 +247,75 @@ const isAssignedConversation = computed(() => {
   return tags.some(t => t && t.id === 'assigned')
 })
 
-// 客户信息：派生自当前会话。AgentPanel 内部还有 mock 兜底，
-// 所以这里 null 也是合法的（占位 + 未选中态）。
+// 客户信息：派生自当前会话。AgentPanel 接收的 customer 必须非空，
+// 会话未选中时整个面板不渲染（MainView 模板里 v-if 控制），所以这里
+// null 也是合法的占位状态。
+//
+// 渠道（channel）按产品要求从会话的 tag 数组里读 —— 取 tags 中匹配
+//   TICKET_GLOBAL_TAG.CHANNEL_WIDGET / CHANNEL_TELEGRAM / CHANNEL_JUGGLEIM
+// 的那条 tag，回退到 c.platform 字符串再做映射（兼容早期 SDK 返回）。
+// 不依赖 c.platform 直接读取：服务端开始往 tag 上推 channel 后，c.platform
+// 字段会逐步废弃（见 docs/sprint-1-revised-backend.md §3.4）。
 const currentCustomerInfo = computed(() => {
   const c = currentConversation.value
   if (!c) return null
   const name = c.name || c.conversationName || c.userName || c.displayName || '未命名客户'
+  const tags = Array.isArray(c.tags) ? c.tags : []
+  const channelTag = tags.find((t) =>
+    t && (
+      t.id === TICKET_GLOBAL_TAG.CHANNEL_WIDGET ||
+      t.id === TICKET_GLOBAL_TAG.CHANNEL_TELEGRAM ||
+      t.id === TICKET_GLOBAL_TAG.CHANNEL_JUGGLEIM
+    )
+  )
+  let channelKey = ''
+  if (channelTag) {
+    if (channelTag.id === TICKET_GLOBAL_TAG.CHANNEL_WIDGET) channelKey = PLATFORM.WEB
+    else if (channelTag.id === TICKET_GLOBAL_TAG.CHANNEL_TELEGRAM) channelKey = PLATFORM.TELEGRAM
+    else if (channelTag.id === TICKET_GLOBAL_TAG.CHANNEL_JUGGLEIM) channelKey = PLATFORM.JUGGLECHAT
+  }
+  // 回退：早期 SDK 还没把 channel 写进 tag 时，从 c.platform 推
+  if (!channelKey) {
+    const plat = (c.platform || c.platformKey || '').toLowerCase()
+    if (plat === PLATFORM_TAG_ID.WEB) channelKey = PLATFORM.WEB
+    else if (plat === PLATFORM_TAG_ID.TELEGRAM) channelKey = PLATFORM.TELEGRAM
+    else if (plat === PLATFORM_TAG_ID.JUGGLECHAT) channelKey = PLATFORM.JUGGLECHAT
+  }
+  // 客户 id —— 在 jugglemate 的 IM 模型里，私聊会话的 conversationId 实际
+  // 等于对端 userId（SDK 内部 conversationId = targetId），这就是后端
+  // customer_id 在 IM 端的载体，/jmate/customers/tickets 接受这个值。
+  // 兜底链：c.id → c._raw.targetId → c._raw.conversationId → c.userid → c.customerId。
+  const raw = c._raw || {}
+  const customerId = (
+    c.id
+    || raw.targetId
+    || raw.conversationId
+    || c.userid
+    || c.customerId
+    || ''
+  )
+  if (!customerId && typeof console !== 'undefined') {
+    // 排查字段来源用：打一条警告，列出当前会话对象的可用字段，方便后端
+    // 协议或 SDK 返回结构变更时定位。
+    console.warn('[MainView.currentCustomerInfo] customerId 为空，会话字段:',
+      { id: c.id, conversationId: c.conversationId, ticket_id: c.ticket_id,
+        customerId: c.customerId, userid: c.userid,
+        rawKeys: raw ? Object.keys(raw) : null })
+  }
   return {
+    id: customerId,
     name,
     initial: c.initial || name.charAt(0),
     subtitle: c.subtitle
       || (c.id ? String(c.id) : '')
-      || (c.platform ? String(c.platform) : 'Web'),
+      || (channelKey ? PLATFORM_META[channelKey]?.label : 'Web'),
     online: c.online !== false,
     platformColor: c.platformColor || '',
     avatar: c.avatar || c.portrait || '',
-    platformKey: (c.platform || c.platformKey || '').toLowerCase(),
+    platformKey: channelKey,
+    channelKey,
+    channelLabel: channelKey ? (PLATFORM_META[channelKey]?.label || channelKey) : '',
+    channelColor: channelKey ? (PLATFORM_META[channelKey]?.color || '#6B7280') : '',
     unreadDot: Boolean(c.unreadDot)
   }
 })
@@ -308,10 +326,6 @@ const currentMessages = computed(() => {
 
 const currentSuggestions = computed(() => {
   // if (currentView.value === 'group') return []
-  // 托管中 → 隐藏建议。Agent 已经在自动接管了，运营不需要从候选回复里
-  // 挑一条手发，建议区会让输入区产生无意义的"高度占位"。
-  if (takenOverAgent.value) return []
-
   // 用户主动关掉过 → 本次会话内不再展示
   const sidForDismiss = currentSession.value?.session_id
   if (sidForDismiss && dismissedSuggestions[sidForDismiss]) return []
@@ -375,8 +389,6 @@ function handleConvoSelect(convo) {
   currentConvoId.value = convo.id
   currentConversation.value = convo
   currentSession.value = null  // reset — will be populated by lookup below
-  // 切会话触发一次重算：让 currentTakenOverAgentId 立刻反映新会话的 takeover 状态
-  takeoverVersion.value++
   // Step 1: 点击会话 → 查询 session 是否存在，回显 agent 状态
   loadAgents().then(() => lookupOrCreateSession(convo))
 }
@@ -451,12 +463,8 @@ async function lookupOrCreateSession(convo) {
           selectedAgentId.value = ag.id
         }
       }
-      if (res.data.auto_mode === 2 && res.data.agent) {
-        const ag = agents.find(a => a.unique_name === res.data.agent.unique_name)
-        if (ag) {
-          setTakeover(convo, ag.id)
-        }
-      }
+      // 服务端下推的 auto_mode === 2 由 ChatMain 通过 :auto-mode prop 读取；
+      // 本地不再维护 takeoverByConv —— 客户端已无入口推 auto_mode 到 2。
     } else if (res?.code === 0 && agents.length > 0) {
       // 不存在 → 用第一个 agent 立即创建 session
       const firstAg = agents[0]
@@ -502,11 +510,6 @@ async function handleConversationOp({ key, conversation }) {
         currentConvoId.value = null
         currentSession.value = null
       }
-      // Also drop the local 托管 state for the removed conversation. The
-      // server will clean up the tag membership as part of the deletion;
-      // locally we just need to drop the Map entry so a future reconcile
-      // pass doesn't try to re-add it.
-      clearTakeoverForConv(cType, cId)
     }
   } catch (e) {
     console.warn('[MainView] conversation op failed', key, e)
@@ -718,25 +721,6 @@ async function handleTransferTicket(payload) {
   }
 }
 
-async function handleRevokeTakeover() {
-  // Triggered by the chat takeover banner's "收回控制" button. Clears the
-  // 托管 state for the *current* conversation and sets mode back to 协助.
-  const conv = currentConversation.value
-  if (!conv) return
-  clearTakeover(conv)
-  const sessionId = currentSession.value?.session_id
-  if (sessionId) {
-    try {
-      await post(SERVER_PATH.AGENT_SESSION_TAKEOVER(sessionId), { auto_mode: 1 })
-      if (currentSession.value) {
-        currentSession.value.auto_mode = 1
-      }
-    } catch (e) {
-      console.warn('[MainView] revoke takeover API failed', e)
-    }
-  }
-}
-
 function handleSend(text) {
   if (!text.trim()) return
 
@@ -759,41 +743,6 @@ function handleDeselectAgent() {
   // selectedAgentId from inside the chat (e.g. a per-message "remove Agent
   // context" action). Currently unused.
   selectedAgentId.value = null
-}
-
-function handleAgentPanelModeChange(mode) {
-  const sessionId = currentSession.value?.session_id
-
-  if (mode === 'managed' && selectedAgent.value && currentConversation.value) {
-    const ag = selectedAgent.value
-    handleTakeoverToggle(currentConversation.value, ag.id)
-    if (sessionId) {
-      post(SERVER_PATH.AGENT_SESSION_TAKEOVER(sessionId), { auto_mode: 2 })
-        .then(res => {
-          if (currentSession.value) currentSession.value.auto_mode = 2
-        })
-        .catch(e => console.warn('[MainView] set managed mode API failed', e))
-    }
-  } else if (mode === 'collaborative' && currentConversation.value) {
-    clearTakeover(currentConversation.value)
-    if (sessionId) {
-      post(SERVER_PATH.AGENT_SESSION_TAKEOVER(sessionId), { auto_mode: 1 })
-        .then(res => {
-          if (currentSession.value) currentSession.value.auto_mode = 1
-        })
-        .catch(e => console.warn('[MainView] set collaborative mode API failed', e))
-    }
-  }
-}
-
-function handleTakeoverToggle(conversation, agentId) {
-  if (!conversation || !agentId) return
-  const key = getConvKeyForTakeover(conversation)
-  if (takeoverByConv.has(key)) {
-    clearTakeover(conversation)
-  } else {
-    setTakeover(conversation, agentId)
-  }
 }
 
 async function handleSelectAgent(id) {
@@ -848,43 +797,6 @@ async function handleSelectAgent(id) {
 }
 
 
-// "托管"按钮：把当前 agent 设为会话的接管者，并把 session.auto_mode 推到 2。
-// 流程：① 选中 agent（chat 切风格）→ ② 接管（setTakeover）→ ③ 通知后端。
-function handleHostAgent(agentId) {
-  const ag = agents.find(a => a.id === agentId)
-  const conv = currentConversation.value
-  if (!ag || !conv) return
-  if (selectedAgentId.value !== agentId) {
-    selectedAgentId.value = agentId
-  }
-  // 托管：先写本地 Map（AgentPanel 通过 currentTakenOverAgentId 立刻看到状态变化），
-  // 再同步后端 session.auto_mode = 2。
-  setTakeover(conv, ag.id)
-  const sessionId = currentSession.value?.session_id
-  if (sessionId) {
-    post(SERVER_PATH.AGENT_SESSION_UPDATE_AGENT(sessionId), { unique_name: ag.unique_name })
-      .then(res => { if (res?.code === 0 && res.data) currentSession.value = res.data })
-      .catch(e => console.warn('[MainView] host-agent update session failed', e))
-    post(SERVER_PATH.AGENT_SESSION_TAKEOVER(sessionId), { auto_mode: 2 })
-      .then(res => { if (currentSession.value) currentSession.value.auto_mode = 2 })
-      .catch(e => console.warn('[MainView] host-agent takeover api failed', e))
-  }
-}
-
-// "取消托管"按钮：清掉当前会话的接管，把 session.auto_mode 拉回 1。
-function handleUnhostAgent() {
-  const conv = currentConversation.value
-  if (!conv) return
-  // 先清本地 Map 让 AgentPanel 立刻看到状态变化，再同步后端
-  clearTakeover(conv)
-  const sessionId = currentSession.value?.session_id
-  if (sessionId) {
-    post(SERVER_PATH.AGENT_SESSION_TAKEOVER(sessionId), { auto_mode: 1 })
-      .then(res => { if (currentSession.value) currentSession.value.auto_mode = 1 })
-      .catch(e => console.warn('[MainView] unhost-agent api failed', e))
-  }
-}
-
 function handleCreateAgent(data) {
   agents.push({
     id: 'a' + (agents.length + 1),
@@ -899,47 +811,6 @@ function handleCreateAgent(data) {
   })
 }
 
-function getConvKeyForTakeover(c) {
-  if (!c) return ''
-  const id = c.conversationId || c.id
-  if (id === undefined || id === null) return ''
-  return `${c.conversationType}_${id}`
-}
-
-function setTakeover(conversation, agentId) {
-  if (!conversation || !agentId) return
-  const key = getConvKeyForTakeover(conversation)
-  if (!key) return
-  const wasIn = takeoverByConv.has(key)
-  takeoverByConv.set(key, { conversation, agentId })
-  takeoverVersion.value++
-  if (!wasIn) {
-    void im.addConversationToTakeoverTag(conversation)
-  }
-}
-
-function clearTakeover(conversation) {
-  if (!conversation) return
-  const key = getConvKeyForTakeover(conversation)
-  if (!key) return
-  if (!takeoverByConv.has(key)) return
-  void im.removeConversationFromTakeoverTag(takeoverByConv.get(key).conversation)
-  takeoverByConv.delete(key)
-  takeoverVersion.value++
-}
-
-function clearTakeoverForConv(conversationType, conversationId) {
-  // Used by handleConversationOp('remove') — drops a Map entry by
-  // (type, id) when the conversation is being deleted. We don't fire a
-  // SDK remove here because the server tears down the conversation (and
-  // its tag memberships) as part of the deletion itself; we just need
-  // the local Map to stop tracking it so the next reconcile pass doesn't
-  // try to re-add a now-deleted conversation.
-  if (conversationType === undefined || conversationType === null) return
-  if (conversationId === undefined || conversationId === null) return
-  const key = `${conversationType}_${conversationId}`
-  takeoverByConv.delete(key)
-}
 </script>
 
 <template>
@@ -973,28 +844,23 @@ function clearTakeoverForConv(conversationType, conversationId) {
       @dismiss-suggestions="handleDismissSuggestions"
       :is-group="currentView === 'group'"
       :selected-agent="selectedAgent"
-      :taken-over-agent="takenOverAgent"
       :auto-mode="autoMode"
       :pending-suggestions="currentPendingSuggestions"
       :assigned="isAssignedConversation"
       @send="handleSend"
       @use-suggestion="handleUseSuggestion"
-      @revoke-takeover="handleRevokeTakeover"
       @clear-suggestion="handleClearSuggestion"
       @claim-ticket="handleClaimTicket"
       @transfer-ticket="handleTransferTicket"
     />
 
     <AgentPanel
-      v-if="!hasNoSelection && isAssignedConversation"
+      v-if="!hasNoSelection && currentCustomerInfo"
+      :customer="currentCustomerInfo"
+      :is-assigned="isAssignedConversation"
       :agents="agents"
       :selected-agent-id="selectedAgentId"
-      :mode="agentPanelMode"
-      :hosted-agent-id="currentTakenOverAgentId"
-      :customer="currentCustomerInfo"
       @select-agent="handleSelectAgent"
-      @host-agent="handleHostAgent"
-      @unhost-agent="handleUnhostAgent"
     />
 
     <main v-if="hasNoSelection" class="jm-empty">
@@ -1015,7 +881,7 @@ function clearTakeoverForConv(conversationType, conversationId) {
         <h2 class="jm-empty__title">选择会话开始沟通</h2>
         <p class="jm-empty__desc">从左侧列表里挑一个会话，聊天面板会显示对应的客户、历史消息和 AI 建议。</p>
         <ul class="jm-empty__tips">
-          <li><span class="dot"></span>支持视图过滤：<b>我的 / 待分配 / AI 托管中 / 全部</b></li>
+          <li><span class="dot"></span>支持视图过滤：<b>我的 / 待分配 / 全部</b></li>
           <li><span class="dot"></span>支持按平台筛选：<b>Web / Telegram / JuggleChat</b></li>
           <li><span class="dot"></span>搜索框可按客户名、关键词快速定位</li>
         </ul>
