@@ -26,6 +26,7 @@ import MessageTimeline from './MessageTimeline.vue'
 import MessageUnknown from './MessageUnknown.vue'
 import MessageRecall from './MessageRecall.vue'
 import MessageTicketAssign from './MessageTicketAssign.vue'
+import MessageTicketReassign from './MessageTicketReassign.vue'
 
 const props = defineProps({
   message: {
@@ -68,6 +69,7 @@ const kind = computed(() => {
   if (m.name === MSG_NAME.CONTACT_CARD) return 'card'
   if (m.name === MSG_NAME.ANIMATION_STICKER) return 'sticker'
   if (m.name === MSG_NAME.TICKET_ASSIGN) return 'ticketassign'
+  if (m.name === MSG_NAME.TICKET_REASSIGN) return 'ticketreassign'
   return 'unknown'
 })
 
@@ -126,6 +128,7 @@ function onPreview(payload) {
   <MessageTimeline v-if="kind === 'timeline'" :message="message" />
   <MessageRecall v-else-if="kind === 'recall'" :message="message" />
   <MessageTicketAssign v-else-if="kind === 'ticketassign'" :message="message" />
+  <MessageTicketReassign v-else-if="kind === 'ticketreassign'" :message="message" />
 
   <!-- Default: bubble with avatar. -->
   <MessageBubble

@@ -1644,7 +1644,7 @@
   align-items: center;
   justify-content: space-between;
   height: 56px;
-  padding: 0 20px;
+  padding: 0 10px 0 20px;
   border-bottom: 1px solid var(--border);
   background: var(--bg);
   flex-shrink: 0;
@@ -1666,13 +1666,6 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #FFB199, #FF0844);
-  color: #FFFFFF;
-  font-size: 13px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   flex-shrink: 0;
 }
 
@@ -1726,6 +1719,9 @@
   background: var(--success);
   flex-shrink: 0;
 }
+.tyn-chat-header__dot--offline {
+  background: var(--text-3);
+}
 
 .tyn-chat-header__typing-dots {
   display: inline-flex;
@@ -1758,6 +1754,70 @@
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+}
+
+.tyn-chat-header__more-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.tyn-chat-header__more {
+  width: 20px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: var(--t-fast);
+}
+
+.tyn-chat-header__more:hover,
+.tyn-chat-header__more[aria-expanded="true"] {
+  background: var(--bg-mute);
+  color: var(--text-1);
+}
+
+.tyn-chat-header__action-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  min-width: 116px;
+  padding: 5px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  box-shadow: var(--shadow-md);
+}
+
+.tyn-chat-header__action-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-1);
+  font-size: 13px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: var(--t-fast);
+}
+
+.tyn-chat-header__action-item:hover {
+  background: var(--bg-mute);
+  color: var(--primary);
+}
+
+.tyn-chat-header__action-item svg {
+  flex: 0 0 auto;
 }
 
 .tyn-chat-header__agent-mode {

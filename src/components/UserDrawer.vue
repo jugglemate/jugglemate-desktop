@@ -1,7 +1,8 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { CONFIG, getApiBaseUrl } from '../config'
 import toast from '../common/toast'
+import userService from '../services/user'
 
 const props = defineProps({
   show: {
@@ -26,6 +27,21 @@ const props = defineProps({
 const emit = defineEmits(['close', 'logout'])
 
 const isAdmin = computed(() => Number(props.userRole) === 1)
+const editableName = ref(props.userName)
+const editableAvatar = ref('')
+watch(() => props.show, (visible) => {
+  if (!visible) return
+  const user = userService.getCurrentUser() || {}
+  editableName.value = user.name || props.userName
+  editableAvatar.value = user.portrait || user.avatar || ''
+})
+
+function saveProfile() {
+  const name = editableName.value.trim()
+  if (!name) return
+  userService.updateCurrentUser({ name, portrait: editableAvatar.value.trim() })
+  toast.success?.('个人信息已保存')
+}
 
 // 管理员专属：跳转到外部管理后台。
 // 主机地址跟随用户当前配置的 API server（而不是写死线上 IP），
@@ -76,7 +92,9 @@ async function openAdminConsole() {
 
           <!-- 用户信息区 -->
           <div class="user-drawer__profile">
-            <div class="user-drawer__avatar">{{ userName.charAt(0) }}</div>
+            <div class="user-drawer__avatar" :style="editableAvatar ? { backgroundImage: `url(${editableAvatar})` } : {}">
+              <span v-if="!editableAvatar">{{ editableName.charAt(0) }}</span>
+            </div>
             <div class="user-drawer__name">
               <label>昵称：</label>
               <span>{{ userName }}</span>
@@ -89,26 +107,13 @@ async function openAdminConsole() {
 
           <div class="user-drawer__divider"></div>
 
-          <!-- 菜单区：当前只对管理员展示"管理后台"入口；非管理员整块不渲染。 -->
-          <div v-if="isAdmin" class="user-drawer__menu">
-            <!-- 管理员专属入口：跳转到 jmateconsole -->
-            <button
-              type="button"
-              class="user-drawer__menu-item user-drawer__menu-item--admin"
-              @click="openAdminConsole"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 2l3 7h7l-5.5 4 2 7L12 16l-6.5 4 2-7L2 9h7l3-7z"/>
-              </svg>
-              <span>管理后台</span>
-              <svg class="user-drawer__arrow" width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <path d="M9 3h2v2h-2zM9 7h2v6h-2zM5 9h6v2H5z" fill="currentColor"/>
-                <path d="M14 3l-1-1-7 7 1 1 7-7z" fill="currentColor"/>
-              </svg>
-            </button>
+          <div class="user-drawer__edit-form">
+            <label>头像地址</label>
+            <input v-model="editableAvatar" placeholder="输入头像 URL（可选）">
+            <label>昵称</label>
+            <input v-model="editableName" maxlength="40">
+            <button type="button" class="user-drawer__save" @click="saveProfile">保存修改</button>
           </div>
-
-          <div v-if="isAdmin" class="user-drawer__divider"></div>
 
           <!-- 退出登录 -->
           <div class="user-drawer__footer">
@@ -217,6 +222,42 @@ async function openAdminConsole() {
   background: #F0F2F5;
   margin: 0 20px;
 }
+
+.user-drawer__edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 20px;
+}
+.user-drawer__edit-form label {
+  color: #6B7280;
+  font-size: 12px;
+}
+.user-drawer__edit-form input {
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid #E5E7EB;
+  border-radius: 7px;
+  color: #1F2937;
+  font: inherit;
+  outline: none;
+}
+.user-drawer__edit-form input:focus {
+  border-color: #3B82F6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, .12);
+}
+.user-drawer__save {
+  height: 34px;
+  margin-top: 7px;
+  border: 0;
+  border-radius: 7px;
+  background: #3B82F6;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+.user-drawer__save:hover { background: #2563EB; }
 
 .user-drawer__menu {
   padding: 8px 0;

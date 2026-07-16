@@ -261,18 +261,19 @@ const currentCustomerInfo = computed(() => {
   if (!c) return null
   const name = c.name || c.conversationName || c.userName || c.displayName || '未命名客户'
   const tags = Array.isArray(c.tags) ? c.tags : []
-  const channelTag = tags.find((t) =>
-    t && (
-      t.id === TICKET_GLOBAL_TAG.CHANNEL_WIDGET ||
-      t.id === TICKET_GLOBAL_TAG.CHANNEL_TELEGRAM ||
-      t.id === TICKET_GLOBAL_TAG.CHANNEL_JUGGLEIM
-    )
-  )
+  const channelTag = tags.find((t) => {
+    const tagId = t?.id ?? t?.tag
+    return tagId === TICKET_GLOBAL_TAG.CHANNEL_WIDGET
+      || tagId === TICKET_GLOBAL_TAG.CHANNEL_TELEGRAM
+      || tagId === TICKET_GLOBAL_TAG.CHANNEL_JUGGLEIM
+      || tagId === TICKET_GLOBAL_TAG.CHANNEL_WATCHAPP
+  })
   let channelKey = ''
   if (channelTag) {
-    if (channelTag.id === TICKET_GLOBAL_TAG.CHANNEL_WIDGET) channelKey = PLATFORM.WEB
-    else if (channelTag.id === TICKET_GLOBAL_TAG.CHANNEL_TELEGRAM) channelKey = PLATFORM.TELEGRAM
-    else if (channelTag.id === TICKET_GLOBAL_TAG.CHANNEL_JUGGLEIM) channelKey = PLATFORM.JUGGLECHAT
+    const tagId = channelTag.id ?? channelTag.tag
+    if (tagId === TICKET_GLOBAL_TAG.CHANNEL_WIDGET) channelKey = PLATFORM.WEB
+    else if (tagId === TICKET_GLOBAL_TAG.CHANNEL_TELEGRAM) channelKey = PLATFORM.TELEGRAM
+    else if (tagId === TICKET_GLOBAL_TAG.CHANNEL_JUGGLEIM) channelKey = PLATFORM.JUGGLECHAT
   }
   // 回退：早期 SDK 还没把 channel 写进 tag 时，从 c.platform 推
   if (!channelKey) {

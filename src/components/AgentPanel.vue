@@ -50,12 +50,13 @@ const activeTab = ref('customer')
 const customer = computed(() => props.customer || null)
 
 // 渠道展示元数据：channelKey → { label, color }。
-// channelKey 为空表示没有 tag 命中也没平台字段 —— 显示「未知渠道」。
+// channelKey 为空表示没有 tag 命中也没平台字段 —— 显示「-」。
 const CHANNEL_META = {
-  '':          { label: '未知渠道', color: '#9CA3AF' },
+  '':          { label: '-', color: '#9CA3AF' },
   web:         { label: 'Web',      color: '#7C3AED' },
   telegram:    { label: 'Telegram', color: '#FF2442' },
-  jugglechat:  { label: 'JuggleChat', color: '#07C160' }
+  jugglechat:  { label: 'JuggleChat', color: '#07C160' },
+  watchapp:    { label: 'WatchApp', color: '#0EA5E9' }
 }
 function channelMeta(key) {
   return CHANNEL_META[key] || CHANNEL_META['']
@@ -164,6 +165,26 @@ const customerChannels = computed(() => {
   return customer.value?.channelLabel ? [customer.value.channelLabel] : []
 })
 
+const customerEmail = computed(() => customerDetail.value?.email || customer.value?.email || '')
+const customerPhone = computed(() => customerDetail.value?.phone || customer.value?.phone || '')
+const customerCompany = computed(() => customerDetail.value?.company || customerDetail.value?.organization || customer.value?.company || '')
+const customerJobTitle = computed(() => customerDetail.value?.job_title || customerDetail.value?.title || customer.value?.jobTitle || '')
+const customerLocation = computed(() => customerDetail.value?.location || customerDetail.value?.city || customer.value?.location || '')
+
+const demoProfile = {
+  name: 'soft-lake-3754',
+  avatar: 'https://i.pravatar.cc/120?img=12',
+  title: '',
+  email: ' jugglelChat@im.cn',
+  phone: '+86 18810937339',
+  location: '北京'
+}
+
+async function copyCustomerValue(value) {
+  if (!value || !navigator?.clipboard) return
+  try { await navigator.clipboard.writeText(value) } catch (e) { console.warn('[AgentPanel] copy failed', e) }
+}
+
 // ---------------- helpers ----------------
 function statusMeta(status) {
   // status 可能是数字（API 直返）或字符串（万一服务端又改）。
@@ -225,37 +246,39 @@ function onClickAgent(agent) {
     <div class="side-body">
       <!-- ============== 客户详情 tab ============== -->
       <div v-if="activeTab === 'customer'" class="customer-tab">
-        <!-- 基本信息：label : value 行（数据来源：/jmate/customers/:id） -->
+        <!-- 基本信息 -->
         <section class="info-block">
-          <!-- 40x40 头像居中（基本信息首屏） -->
-          <div class="info-avatar">
+          <div class="info-profile">
             <Avatar
               :name="customerNameDisplay"
               :avatar="customerAvatarDisplay"
-              size="md"
+              size="lg"
             />
           </div>
-          <div class="info-head">基本信息</div>
+          <div class="info-profile__body">
+            <div class="info-profile__name-row">
+              <strong class="info-profile__name">{{ customerNameDisplay }}</strong>
+            </div>
+            <div v-if="demoProfile.title" class="info-profile__title">{{ demoProfile.title }}</div>
+          </div>
           <div class="info-list">
-            <div class="info-row">
-              <span class="info-label">id</span>
-              <span class="info-value info-value--mono" :title="customerIdDisplay">{{ customerIdDisplay }}</span>
+            <div class="info-row info-row--contact">
+              <span class="info-row__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></span>
+              <span class="info-value" :title="demoProfile.email">{{ demoProfile.email }}</span>
+              <button class="info-copy-btn" title="复制邮箱" aria-label="复制邮箱" @click="copyCustomerValue(demoProfile.email)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg></button>
             </div>
-            <div class="info-row">
-              <span class="info-label">name</span>
-              <span class="info-value">{{ customerNameDisplay }}</span>
+            <div class="info-row info-row--contact">
+              <span class="info-row__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.78.62 2.63a2 2 0 0 1-.45 2.11L8 9.73a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.85.29 1.73.5 2.63.62A2 2 0 0 1 22 16.92z"/></svg></span>
+              <span class="info-value">{{ demoProfile.phone }}</span>
+              <button class="info-copy-btn" title="复制电话" aria-label="复制电话" @click="copyCustomerValue(demoProfile.phone)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg></button>
             </div>
-            <div class="info-row">
-              <span class="info-label">渠道</span>
-              <span class="info-value">
-                <span
-                  class="channel-chip"
-                  :style="{ background: channel.color + '14', color: channel.color, borderColor: channel.color + '33' }"
-                >
-                  <span class="channel-dot" :style="{ background: channel.color }"></span>
-                  {{ channel.label }}
-                </span>
-              </span>
+            <div class="info-row info-row--contact">
+              <span class="info-row__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg></span>
+              <span class="info-value">{{ demoProfile.location }}</span>
+            </div>
+            <div class="info-row info-row--contact">
+              <span class="info-row__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="m8.2 7.3 2.6 8.3M15.8 7.3l-2.6 8.3M8.5 6h7"/></svg></span>
+              <span class="info-value">{{ channel.label }}</span>
             </div>
           </div>
         </section>
@@ -339,8 +362,8 @@ function onClickAgent(agent) {
 <style scoped>
 /* ============== 容器 ============== */
 .customer-side {
-  width: 280px;
-  min-width: 280px;
+  width: 240px;
+  min-width: 240px;
   flex-shrink: 0;
   height: 100vh;
   background: var(--bg);
@@ -403,22 +426,74 @@ function onClickAgent(agent) {
 
 /* ----- 基本信息 ----- */
 .info-block {
-  padding: 14px 16px 12px;
+  padding: 22px 20px 18px;
   border-bottom: 1px solid var(--border-soft);
 }
-/* 40x40 头像居中（基本信息首屏） */
-.info-avatar {
+.info-profile {
   display: flex;
-  justify-content: center;
   align-items: center;
-  margin: 0 auto 14px;
-  width: 40px;
-  height: 40px;
+  margin-bottom: 10px;
+  min-width: 0;
 }
-.info-avatar :deep(.tyn-avatar--md) {
+.info-profile :deep(.tyn-avatar--lg) {
   width: 40px;
   height: 40px;
   font-size: 15px;
+}
+.info-profile__body {
+  min-width: 0;
+  margin-bottom: 10px;
+}
+.info-profile__name-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+.info-profile__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-1);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.25;
+}
+.info-profile__title {
+  margin-top: 8px;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.35;
+}
+.info-icon-btn,
+.info-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.info-icon-btn {
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 600;
+}
+.info-icon-btn--external {
+  border: 0;
+  font-size: 21px;
+  font-weight: 400;
+}
+.info-icon-btn:hover,
+.info-copy-btn:hover {
+  color: var(--primary);
 }
 .info-head {
   font-size: 11px;
@@ -431,25 +506,34 @@ function onClickAgent(agent) {
 .info-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 13px;
 }
 .info-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 22px;
+  gap: 8px;
+  min-height: 24px;
 }
-.info-label {
+.info-row__icon {
   flex-shrink: 0;
-  width: 48px;
-  font-size: 12px;
-  color: var(--text-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: var(--text-2);
+  line-height: 1;
+}
+.info-row__icon svg {
+  width: 14px;
+  height: 14px;
 }
 .info-value {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
-  font-size: 13px;
-  color: var(--text-1);
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -457,6 +541,15 @@ function onClickAgent(agent) {
 .info-value--mono {
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   font-size: 12px;
+}
+.info-copy-btn {
+  width: 14px;
+  height: 14px;
+  margin-left: 2px;
+}
+.info-copy-btn svg {
+  width: 14px;
+  height: 14px;
 }
 
 /* 渠道 chip */

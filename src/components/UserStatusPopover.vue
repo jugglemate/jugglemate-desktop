@@ -192,7 +192,8 @@ function handleLogout() {
 
 /* me-stats：3 统计 */
 .me-stats {
-  display: grid;
+  display: none;
+  /* display: grid; */
   grid-template-columns: repeat(3, 1fr);
   gap: 6px;
   background: var(--bg-mute);

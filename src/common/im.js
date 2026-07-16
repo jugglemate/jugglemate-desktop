@@ -20,6 +20,92 @@ export const connectionState = ref(false)
 // 事件已经在 Conversations 里 scheduleUnreadRefresh()，落到本 ref。
 export const inboxUnreadTotal = ref(0)
 
+const USER_STATUS_TTL = 60 * 1000
+const userStatusCache = reactive(new Map())
+const userStatusRequests = new Map()
+
+function getCachedUserStatus(userId) {
+  if (!userId) return null
+  const cached = userStatusCache.get(String(userId))
+  if (!cached || cached.expiresAt <= Date.now()) {
+    if (cached) console.log('[IM][user-status] cache expired', {
+      userId: String(userId),
+      status: cached.status,
+      expiresAt: cached.expiresAt,
+      now: Date.now()
+    })
+    return null
+  }
+  console.log('[IM][user-status] cache hit', {
+    userId: String(userId),
+    status: cached.status,
+    expiresInMs: cached.expiresAt - Date.now()
+  })
+  return cached.status
+}
+
+async function getUserStatus(userId) {
+  const normalizedUserId = String(userId || '')
+  if (!normalizedUserId) return null
+
+  const cachedStatus = getCachedUserStatus(normalizedUserId)
+  if (cachedStatus !== null) return cachedStatus
+  if (!juggle?.getUserStatus) {
+    console.warn('[IM][user-status] SDK method unavailable', { userId: normalizedUserId })
+    return null
+  }
+
+  if (userStatusRequests.has(normalizedUserId)) {
+    console.log('[IM][user-status] reuse in-flight request', { userId: normalizedUserId })
+    return userStatusRequests.get(normalizedUserId)
+  }
+
+  const params = { userIds: [normalizedUserId] }
+  console.log('[IM][user-status] request', { params, connected: isConnected?.() })
+  const request = juggle.getUserStatus(params)
+    .then((result) => {
+      console.log('[IM][user-status] raw response', {
+        userId: normalizedUserId,
+        result,
+        users: result?.users
+      })
+      const user = result?.users?.find((item) => String(item?.userId) === normalizedUserId)
+      if (!user || user.status === undefined || user.status === null) {
+        console.warn('[IM][user-status] user status missing', {
+          userId: normalizedUserId,
+          requestedUserIds: params.userIds,
+          returnedUsers: result?.users
+        })
+        return null
+      }
+      console.log('[IM][user-status] parsed status', {
+        userId: normalizedUserId,
+        status: user.status,
+        statusType: typeof user.status,
+        isOnline: Number(user.status) === 1
+      })
+      userStatusCache.set(normalizedUserId, {
+        status: Number(user.status),
+        expiresAt: Date.now() + USER_STATUS_TTL
+      })
+      return Number(user.status)
+    })
+    .catch((error) => {
+      console.error('[IM][user-status] request failed', {
+        userId: normalizedUserId,
+        params,
+        error
+      })
+      throw error
+    })
+    .finally(() => {
+      userStatusRequests.delete(normalizedUserId)
+    })
+
+  userStatusRequests.set(normalizedUserId, request)
+  return request
+}
+
 // ---------------------------------------------------------------------------
 // Conversation tags (a.k.a. 会话分组).
 //
@@ -642,6 +728,9 @@ const {
 export default {
   init,
   getCurrent,
+  getUserStatus,
+  getCachedUserStatus,
+  userStatusCache,
   getConversation,
   isConnected,
   isConnecting: () => _connecting,

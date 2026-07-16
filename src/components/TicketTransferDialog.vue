@@ -279,7 +279,7 @@ function initial(name) {
           <label class="trf__note-label">备注（可选，会作为系统消息通知对方）</label>
           <textarea
             v-model="note"
-            rows="2"
+            rows="3"
             :maxlength="NOTE_MAX"
             placeholder="如：VIP 客户，麻烦优先处理"
           ></textarea>
@@ -380,13 +380,14 @@ function initial(name) {
 .trf__ctx-sep { color: var(--text-4); }
 
 .trf__search {
-  padding: 0 20px 10px;
   position: relative;
+  padding: 0 20px;
+  margin-bottom: 10px;   /* 原来写在 padding 底部的间距挪到 margin，避免撑高外层 box */
 }
 .trf__search svg {
   position: absolute;
   left: 30px;
-  top: 50%;
+  top: 50%;              /* 外层 box 高度 == input 几何高度，居中点正好对齐 input 中线 */
   transform: translateY(-50%);
   color: var(--text-3);
   pointer-events: none;
@@ -401,6 +402,7 @@ function initial(name) {
   color: var(--text-1);
   font-family: inherit;
   transition: all var(--t-fast);
+  line-height: 1.4;
 }
 .trf__search input:focus {
   outline: none;
@@ -544,6 +546,11 @@ function initial(name) {
 .trf__footer-info {
   font-size: 12px;
   color: var(--text-3);
+}
+.trf__footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;   /* 取消 / 确认转移 两个按钮之间的间距 */
 }
 
 .btn {

@@ -2,7 +2,14 @@
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import im from '../common/im'
 import { SERVER_PATH, post, get } from '../services/api'
-import { MSG_NAME, TYPING_STATUS } from '../common/enum'
+import {
+  MSG_NAME,
+  TYPING_STATUS,
+  PLATFORM,
+  PLATFORM_META,
+  PLATFORM_TAG_ID,
+  TICKET_GLOBAL_TAG
+} from '../common/enum'
 import utils from '../common/utils'
 import chatTime from '../common/chat-time-utils'
 import toast from '../common/toast'
@@ -14,6 +21,7 @@ import ImagePreviewer from './ImagePreviewer.vue'
 import TransferDialog from './TransferDialog.vue'
 import TicketTransferDialog from './TicketTransferDialog.vue'
 import ReplyQuote from './ReplyQuote.vue'
+import Avatar from './Avatar.vue'
 
 const props = defineProps({
   conversation: {
@@ -98,6 +106,18 @@ const isHistoryFinished = ref(false)
 const composerText = ref('')
 const replyTo = ref(null)
 const peerTyping = ref(false)
+const peerStatusLoading = ref(false)
+const peerStatus = computed(() => {
+  const userId = props.conversation?.conversationId || props.conversation?.id
+  if (!userId) return null
+  return im.userStatusCache.get(String(userId))?.status ?? null
+})
+const peerOnline = computed(() => peerStatus.value === 1)
+const peerStatusText = computed(() => {
+  if (peerStatus.value === im.UserStatus.ONLINE) return '在线'
+  if (peerStatus.value === im.UserStatus.OFFLINE) return '离线'
+  return peerStatusLoading.value ? '查询中…' : '状态未知'
+})
 let receiveTypingTimer = null
 let typingStartSentAt = 0
 
@@ -124,6 +144,64 @@ const messageMenuState = ref({ show: false, x: 0, y: 0, message: null })
 const transferState = ref({ show: false, message: null, targets: [] })
 
 const juggle = im.getCurrent()
+
+async function ensurePeerStatus() {
+  if (props.isGroup) return
+  const userId = props.conversation?.conversationId || props.conversation?.id
+  if (!userId) {
+    console.warn('[ChatMain][user-status] missing peer userId', {
+      conversation: props.conversation
+    })
+    return
+  }
+  console.log('[ChatMain][user-status] resolve peer', {
+    userId: String(userId),
+    conversationId: props.conversation?.conversationId,
+    conversationType: props.conversation?.conversationType,
+    targetId: props.conversation?._raw?.targetId,
+    platform: props.conversation?.platform
+  })
+  peerStatusLoading.value = true
+  try {
+    await im.getUserStatus(userId)
+  } catch (error) {
+    console.warn('[ChatMain] getUserStatus failed', { userId, error })
+  } finally {
+    peerStatusLoading.value = false
+    console.log('[ChatMain][user-status] rendered state', {
+      userId: String(userId),
+      cachedStatus: im.userStatusCache.get(String(userId))?.status,
+      statusText: peerStatusText.value
+    })
+  }
+}
+
+const platformTag = computed(() => {
+  if (props.isGroup || !props.conversation) return null
+
+  const tags = Array.isArray(props.conversation.tags) ? props.conversation.tags : []
+  const channelTag = tags.find((item) => {
+    const tagId = item?.id ?? item?.tag
+    return tagId === TICKET_GLOBAL_TAG.CHANNEL_WIDGET
+      || tagId === TICKET_GLOBAL_TAG.CHANNEL_TELEGRAM
+      || tagId === TICKET_GLOBAL_TAG.CHANNEL_JUGGLEIM
+  })
+
+  const tagId = channelTag?.id ?? channelTag?.tag
+  let platformKey = ''
+  if (tagId === TICKET_GLOBAL_TAG.CHANNEL_WIDGET) platformKey = PLATFORM.WEB
+  else if (tagId === TICKET_GLOBAL_TAG.CHANNEL_TELEGRAM) platformKey = PLATFORM.TELEGRAM
+  else if (tagId === TICKET_GLOBAL_TAG.CHANNEL_JUGGLEIM) platformKey = PLATFORM.JUGGLECHAT
+
+  if (!platformKey) {
+    const fallback = String(props.conversation.platform || props.conversation.platformKey || '').toLowerCase()
+    if (fallback === PLATFORM_TAG_ID.WEB) platformKey = PLATFORM.WEB
+    else if (fallback === PLATFORM_TAG_ID.TELEGRAM) platformKey = PLATFORM.TELEGRAM
+    else if (fallback === PLATFORM_TAG_ID.JUGGLECHAT) platformKey = PLATFORM.JUGGLECHAT
+  }
+
+  return platformKey ? PLATFORM_META[platformKey] : null
+})
 
 // ---------------------------------------------------------------------------
 // Derived: rows = messages + injected time separators
@@ -262,6 +340,15 @@ function onClaimTicket() {
 //   - expected_version 用于并发冲突检测（17012），如果不传后端会按缺省行为处理。
 const transferOpen = ref(false)
 const transferring = ref(false)
+const headerMenuOpen = ref(false)
+function toggleHeaderMenu(event) {
+  event.stopPropagation()
+  headerMenuOpen.value = !headerMenuOpen.value
+}
+function selectHeaderAction(action) {
+  headerMenuOpen.value = false
+  if (action === 'transfer') openTransfer()
+}
 function openTransfer() {
   if (!props.conversation?.ticket_id) {
     console.warn('[ChatMain] openTransfer: missing ticket_id')
@@ -287,6 +374,8 @@ function onTicketTransferConfirm(payload) {
 // 切换会话时强制关闭弹层，避免跨 ticket 数据残留
 watch(() => props.conversation?.conversationId, () => {
   if (transferOpen.value) transferOpen.value = false
+  headerMenuOpen.value = false
+  ensurePeerStatus()
 })
 
 // 当前显示用的工单 ID —— 优先用短 ID 友好显示；找不到就退到原始 id
@@ -1196,6 +1285,7 @@ watch(
 )
 
 onMounted(() => {
+  ensurePeerStatus()
   if (!juggle?.on) return
   juggle.on(Event.MESSAGE_RECEIVED, onMessageReceived)
   juggle.on(Event.MESSAGE_RECALLED, onMessageRecalled)
@@ -1220,6 +1310,7 @@ onBeforeUnmount(() => {
 })
 
 function closeAllMenus() {
+  headerMenuOpen.value = false
   if (messageMenuState.value.show) {
     messageMenuState.value.show = false
     messageMenuState.value.message = null
@@ -1349,14 +1440,21 @@ defineExpose({ notifyTransferResult, openTransfer })
     <!-- Chat Header -->
     <div v-if="conversation || isGroup" class="tyn-chat-header">
       <div class="tyn-chat-header__info">
-        <div class="tyn-chat-header__avatar">
-          {{ isGroup ? (groupName || '群').charAt(0) : (conversation?.name || '?').charAt(0) }}
-        </div>
+        <Avatar
+          class="tyn-chat-header__avatar"
+          :name="isGroup ? (groupName || '群') : (conversation?.name || '?')"
+          :avatar="isGroup ? '' : (conversation?.portrait || conversation?.avatar || '')"
+          size="md"
+        />
         <div class="tyn-chat-header__meta">
           <div class="tyn-chat-header__name">
             {{ isGroup ? groupName : (conversation?.name || '') }}
-            <span class="tyn-chat-header__platform-tag">
-              {{ conversation?.platform }}
+            <span
+              v-if="platformTag"
+              class="tyn-chat-header__platform-tag"
+              :style="{ color: platformTag.color, backgroundColor: platformTag.color + '14' }"
+            >
+              {{ platformTag.label }}
             </span>
           </div>
           <div class="tyn-chat-header__sub">
@@ -1367,7 +1465,10 @@ defineExpose({ notifyTransferResult, openTransfer })
             <!-- 私聊：在线 / 正在输入中 二选一 -->
             <template v-else>
               <span v-if="!peerTyping" class="tyn-chat-header__sub-state">
-                <span class="tyn-chat-header__dot"></span>在线
+                <span
+                  class="tyn-chat-header__dot"
+                  :class="{ 'tyn-chat-header__dot--offline': !peerOnline }"
+                ></span>{{ peerStatusText }}
               </span>
               <span v-else class="tyn-chat-header__sub-state tyn-chat-header__sub-state--typing">
                 <span class="tyn-chat-header__typing-dots" aria-hidden="true">
@@ -1389,17 +1490,24 @@ defineExpose({ notifyTransferResult, openTransfer })
           <span class="tyn-chat-header__mode-dot"></span>
           <span class="tyn-chat-header__mode-text">{{ modeText }}</span>
         </div>
-        <!-- 工单转移入口：群聊（isGroup）不显示，私聊工单显示 -->
-        <button
-          v-if="!isGroup"
-          class="tyn-btn tyn-btn--sm tyn-btn--outline tyn-chat-header__transfer"
-          type="button"
-          title="转移工单给其他客服（仅群成员可被选为目标）"
-          @click="openTransfer"
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 17 20 12 15 7"></polyline><path d="M4 18v-2a4 4 0 0 1 4-4h12"></path></svg>
-          <span>转移</span>
-        </button>
+        <div v-if="!isGroup" class="tyn-chat-header__more-wrap">
+          <button
+            class="tyn-chat-header__more"
+            type="button"
+            title="更多功能"
+            aria-label="更多功能"
+            :aria-expanded="headerMenuOpen"
+            @click="toggleHeaderMenu"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
+          </button>
+          <div v-if="headerMenuOpen" class="tyn-chat-header__action-menu" @click.stop>
+            <button type="button" class="tyn-chat-header__action-item" @click="selectHeaderAction('transfer')">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/></svg>
+              <span>转移</span>
+            </button>
+          </div>
+        </div>
       </div>
       <div class="tyn-chat-header__actions" v-if="!isAssignedConversation">
         <button

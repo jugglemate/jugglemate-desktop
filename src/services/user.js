@@ -106,6 +106,15 @@ function getCurrentUser() {
   return Storage.get(STORAGE.USER_TOKEN)
 }
 
+function updateCurrentUser(patch = {}) {
+  const current = getCurrentUser()
+  if (!current) return null
+  const updated = { ...current, ...patch }
+  Storage.set(STORAGE.USER_TOKEN, updated)
+  upsertInUserList(updated)
+  return updated
+}
+
 /**
  * Check if user is logged in
  */
@@ -126,6 +135,7 @@ export default {
   login,
   logout,
   getCurrentUser,
+  updateCurrentUser,
   isLoggedIn,
   getStoredUsers
 }

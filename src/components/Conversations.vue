@@ -68,15 +68,12 @@ const emit = defineEmits(['select', 'conversation-op', 'suggestion-received', 'v
 const currentView = ref(VIEW.MINE)
 const currentPlatform = ref(PLATFORM.ALL)
 // 工单状态筛选（2026-07-13 新增）。
-// 默认值联动 currentView：视图=mine 时默认选 processing，unassigned 默认选 pending。
+// 默认不选择（ref('') ＝「全部」＝不传 tag），与视图完全独立，
+// 用户需主动点击状态项才会下发 status tag。
 // 状态列的"全部"用空串 '' 表示，对应 buildTagParamForStatus 返 undefined 不传 tag。
 const currentStatus = ref('')
-
-const VIEW_DEFAULT_STATUS = {
-  [VIEW.MINE]: TICKET_STATUS_TAG.PROCESSING,
-  [VIEW.UNASSIGNED]: TICKET_STATUS_TAG.PENDING
-  // all 不默认勾
-}
+const filtersCollapsed = ref(false)
+const searchKeyword = ref('')
 
 // 视图 / 平台 / 状态项：直接由 enum 派生
 const viewItems = computed(() =>
@@ -111,6 +108,7 @@ const filterCounts = reactive({
   [PLATFORM.WEB]: 0,
   [PLATFORM.TELEGRAM]: 0,
   [PLATFORM.JUGGLECHAT]: 0,
+  [PLATFORM.WATCHAPP]: 0,
   // 工单状态桶（2026-07-13 新增），每个 key 来自 TICKET_STATUS_TAG
   [TICKET_STATUS_TAG.PENDING]: 0,
   [TICKET_STATUS_TAG.PROCESSING]: 0,
@@ -127,11 +125,8 @@ function isUnreadSupported(view) {
 
 function selectView(key) {
   currentView.value = key
-  // 视图切换时按 VIEW_DEFAULT_STATUS 默认联动状态列。
-  // 注意：只在用户没手动调整过状态列时覆盖；这里用"覆盖"语义简化，
-  // 用户切视图后状态会跟着变（与 Chatwoot 行为一致）。
-  // 如果需要更精细的"用户手动选过就不覆盖"语义，可在 currentStatus 上加 dirty flag。
-  currentStatus.value = VIEW_DEFAULT_STATUS[key] || ''
+  // 工单状态列完全独立于视图 —— 切视图不再覆盖状态选择。
+  // 状态默认值由 currentStatus 的初始 ref('') 决定（=不传 tag 走「全部」）。
   // 通知父组件：当前激活的二级视图变化了。
   emit('view-change', key)
 }
@@ -151,6 +146,10 @@ function selectPlatform(key) {
 // watch(currentStatus) 会触发 fetchConversations()，所以这里只要负责状态切换。
 function selectStatus(key) {
   currentStatus.value = currentStatus.value === key ? '' : key
+}
+
+function toggleFilters() {
+  filtersCollapsed.value = !filtersCollapsed.value
 }
 
 // ---------------------------------------------------------------------------
@@ -192,6 +191,7 @@ function buildTagParamForPlatform(platform) {
   if (platform === PLATFORM.WEB) return TICKET_GLOBAL_TAG.CHANNEL_WIDGET
   if (platform === PLATFORM.TELEGRAM) return TICKET_GLOBAL_TAG.CHANNEL_TELEGRAM
   if (platform === PLATFORM.JUGGLECHAT) return TICKET_GLOBAL_TAG.CHANNEL_JUGGLEIM
+  if (platform === PLATFORM.WATCHAPP) return TICKET_GLOBAL_TAG.CHANNEL_WATCHAPP
   // 兜底：未知 key 不传 tag，避免打错字符串
   return undefined
 }
@@ -243,23 +243,6 @@ function shortFormat(message) {
 }
 
 function getConversationId(c) { return c?.conversationId || c?.id || '' }
-
-// 头像渐变：复用示例里的风格，用 name 的 charCode 选 6 套之一
-const AVATAR_GRADIENTS = [
-  'linear-gradient(135deg,#FFB199,#FF0844)',
-  'linear-gradient(135deg,#8B5CF6,#EC4899)',
-  'linear-gradient(135deg,#14B8A6,#0EA5E9)',
-  'linear-gradient(135deg,#F59E0B,#EF4444)',
-  'linear-gradient(135deg,#10B981,#3B82F6)',
-  'linear-gradient(135deg,#A78BFA,#F472B6)'
-]
-function avatarBg(name) {
-  const i = (name || '').charCodeAt(0) % AVATAR_GRADIENTS.length
-  return AVATAR_GRADIENTS[i]
-}
-function avatarLetter(name) {
-  return (name || '').charAt(0) || '?'
-}
 
 // 把 im 会话映射成视图/模板需要的字段。
 // 保留这些 key（默认 false/undefined），是为了和工单会话对象保持 shape 一致，
@@ -542,6 +525,7 @@ async function fetchUnreadCounts() {
   filterCounts[PLATFORM.WEB] = local.web
   filterCounts[PLATFORM.TELEGRAM] = local.telegram
   filterCounts[PLATFORM.JUGGLECHAT] = local.jugglechat
+  filterCounts[PLATFORM.WATCHAPP] = local.watchapp
   filterCounts[PLATFORM.ALL] = local.all
   // 工单状态（2026-07-13 新增）：键来自 TICKET_STATUS_TAG.*（非空值）
   filterCounts[TICKET_STATUS_TAG.PENDING] = local.statusPending
@@ -561,7 +545,7 @@ async function fetchUnreadCounts() {
 // 也兼容 mapConversation 映射后的对象（c.unread = c.unreadCount），用 ?? 双兜底。
 function bucketUnreadByTags(list) {
   let mine = 0, assigned = 0,
-      web = 0, telegram = 0, jugglechat = 0, all = 0,
+      web = 0, telegram = 0, jugglechat = 0, watchapp = 0, all = 0,
       statusPending = 0, statusProcessing = 0, statusReopen = 0
   for (const c of list) {
     // 兼容两种字段：mapConversation 后的 c.unread，原 SDK 对象的 c.unreadCount
@@ -580,6 +564,7 @@ function bucketUnreadByTags(list) {
     if (plat === PLATFORM_TAG_ID.WEB) web += unread
     else if (plat === PLATFORM_TAG_ID.TELEGRAM) telegram += unread
     else if (plat === PLATFORM_TAG_ID.JUGGLECHAT) jugglechat += unread
+    else if (plat === PLATFORM_TAG_ID.WATCHAPP) watchapp += unread
     // 工单状态分桶（2026-07-13 新增）：基于 TICKET_GLOBAL_TAG.STATUS_* 字符串
     const isStatusPending = tags.some(t => t?.id === TICKET_GLOBAL_TAG.STATUS_PENDING)
     const isStatusProcessing = tags.some(t => t?.id === TICKET_GLOBAL_TAG.STATUS_PROCESSING)
@@ -594,6 +579,7 @@ function bucketUnreadByTags(list) {
   return {
     mine, unassigned, all,
     web, telegram, jugglechat, assigned,
+    web, telegram, jugglechat, watchapp, assigned,
     statusPending, statusProcessing, statusReopen
   }
 }
@@ -708,6 +694,32 @@ const sortedConversations = computed(() => {
   return list;
 })
 
+const displayedConversations = computed(() => {
+  const keyword = searchKeyword.value.trim().toLocaleLowerCase()
+  if (!keyword) return sortedConversations.value
+
+  return sortedConversations.value.filter((conversation) => {
+    const raw = conversation?._raw || {}
+    const searchableValues = [
+      conversation?.name,
+      conversation?.id,
+      conversation?.conversationId,
+      conversation?.customerId,
+      conversation?.userid,
+      conversation?.preview,
+      conversation?.subtitle,
+      conversation?.platform,
+      raw?.targetId,
+      raw?.conversationId,
+      raw?.conversationTitle,
+      shortFormat(raw?.latestMessage)
+    ]
+    return searchableValues.some((value) =>
+      String(value ?? '').toLocaleLowerCase().includes(keyword)
+    )
+  })
+})
+
 // 暴露给父组件的方法。
 // refresh() 主动触发一次「拉 IM 会话 + 拉未读数」，用于父组件在工单认领后
 // 让左侧 mine 视图立刻反映 my_ticket tag 的变化。
@@ -740,9 +752,9 @@ defineExpose({
 </script>
 
 <template>
-  <div class="conversations">
+  <div class="conversations" :class="{ 'conversations--filter-collapsed': filtersCollapsed }">
     <!-- 左：过滤侧栏 -->
-    <aside class="conv-filter">
+    <aside class="conv-filter" :class="{ 'conv-filter--collapsed': filtersCollapsed }">
       <!-- 视图组 -->
       <div class="conv-filter__group">
         <div class="conv-filter__group-title">视图</div>
@@ -750,7 +762,7 @@ defineExpose({
           v-for="it in viewItems"
           :key="it.key"
           class="conv-filter__item"
-          :class="{ 'conv-filter__item--active': currentView === it.key }"
+          :class="{ 'conv-filter__item--collapsed': filtersCollapsed, 'conv-filter__item--active': currentView === it.key }"
           @click="selectView(it.key)"
         >
           <span
@@ -759,7 +771,7 @@ defineExpose({
             v-html="it.icon"
             aria-hidden="true"
           ></span>
-          <span class="conv-filter__item-label">{{ it.label }}</span>
+          <span v-if="!filtersCollapsed" class="conv-filter__item-label">{{ it.label }}</span>
           <span
             v-if="filterCounts[it.key]"
             class="conv-filter__item-badge"
@@ -774,11 +786,18 @@ defineExpose({
           v-for="it in platformItems"
           :key="it.key"
           class="conv-filter__item"
-          :class="{ 'conv-filter__item--active': currentPlatform === it.key }"
+          :class="{ 'conv-filter__item--collapsed': filtersCollapsed, 'conv-filter__item--active': currentPlatform === it.key }"
           @click="selectPlatform(it.key)"
         >
-          <span class="conv-filter__dot" :style="{ background: it.color }"></span>
-          <span class="conv-filter__item-label">{{ it.label }}</span>
+          <span v-if="!filtersCollapsed" class="conv-filter__dot" :style="{ background: it.color }"></span>
+          <span
+            v-if="filtersCollapsed"
+            class="conv-filter__platform-icon"
+            :class="`conv-filter__platform-icon--${it.key}`"
+            aria-hidden="true"
+            v-html="it.icon"
+          ></span>
+          <span v-else class="conv-filter__item-label">{{ it.label }}</span>
           <span
             v-if="filterCounts[it.key]"
             class="conv-filter__item-badge"
@@ -789,12 +808,12 @@ defineExpose({
       <!-- 工单状态组（2026-07-13 新增，2026-07-13 修订：去掉"全部"项）：
            与平台列同构——单选 + 再点取消（回到空选中 = 不传 tag） -->
       <div class="conv-filter__group">
-        <div class="conv-filter__group-title">工单状态</div>
+        <div class="conv-filter__group-title">状态</div>
         <button
           v-for="it in statusItems"
           :key="it.key"
           class="conv-filter__item"
-          :class="{ 'conv-filter__item--active': currentStatus === it.key }"
+          :class="{ 'conv-filter__item--collapsed': filtersCollapsed, 'conv-filter__item--active': currentStatus === it.key }"
           @click="selectStatus(it.key)"
         >
           <!-- icon 替代色块：默认 currentColor（继承自 .conv-filter__item 黑色），
@@ -805,7 +824,7 @@ defineExpose({
             aria-hidden="true"
             v-html="it.icon"
           ></span>
-          <span class="conv-filter__item-label">{{ it.label }}</span>
+          <span v-if="!filtersCollapsed" class="conv-filter__item-label">{{ it.label }}</span>
           <span
             v-if="filterCounts[it.key]"
             class="conv-filter__item-badge"
@@ -817,23 +836,29 @@ defineExpose({
     <!-- 右：会话列表（IM 会话，过滤维度由组件内部视图/平台侧栏决定） -->
     <aside class="conv-list-wrap">
       <div class="conv-list-head">
-        <h3>会话 <span class="conv-list-head__sub">{{ sortedConversations.length }} 进行中</span></h3>
-        <div class="conv-list-head__tools">
-          <button title="刷新"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></button>
-        </div>
+        <h3>
+          <button
+            class="conv-filter__toggle"
+            :class="{ 'conv-filter__toggle--collapsed': filtersCollapsed }"
+            :title="filtersCollapsed ? '展开筛选' : '收起筛选'"
+            :aria-label="filtersCollapsed ? '展开筛选' : '收起筛选'"
+            @click="toggleFilters"
+          ><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M4 6h16M12 12h8M4 18h16"/><path d="m8 9-3 3 3 3"/></svg></button>
+          会话 <span class="conv-list-head__sub">{{ displayedConversations.length }} 进行中</span>
+        </h3>
       </div>
 
       <div class="conv-list-search">
         <div class="conv-list-search__inner">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-          <input placeholder="搜索访客 / 会话 ID / 关键词">
+          <input v-model="searchKeyword" placeholder="搜索访客 / 会话 ID / 关键词">
         </div>
       </div>
 
       <div class="conv-list">
         <slot name="list">
           <div
-            v-for="convo in sortedConversations"
+            v-for="convo in displayedConversations"
             :key="convo.id"
             class="conv-item"
             :class="{
@@ -843,7 +868,7 @@ defineExpose({
             @click="onConvoClick(convo)"
             @contextmenu="onConvoContextMenu($event, convo)"
           >
-            <div class="conv-item__avatar" :style="{ background: avatarBg(convo.name) }">
+            <div class="conv-item__avatar">
               <Avatar
                 :name="convo.name"
                 :avatar="convo.portrait"
@@ -879,8 +904,8 @@ defineExpose({
             </div>
           </div>
 
-          <div v-if="sortedConversations.length === 0" class="conv-list__empty">
-            暂无匹配的会话
+          <div v-if="displayedConversations.length === 0" class="conv-list__empty">
+            {{ searchKeyword.trim() ? '暂无搜索结果' : '暂无匹配的会话' }}
           </div>
         </slot>
       </div>
@@ -903,18 +928,63 @@ defineExpose({
 .conversations {
   display: flex;
   height: 100%;
-  min-width: 460px;        /* 锁死 520，让 ChatMain 走 flex:1 */
-  flex-shrink: 0;
+  width: 440px;
+  min-width: 440px;
+  flex: 0 0 440px;
   background: var(--bg-soft);
+  transition: width var(--t), min-width var(--t), flex-basis var(--t);
+}
+.conversations--filter-collapsed {
+  width: 362px;
+  min-width: 362px;
+  flex-basis: 362px;
 }
 
 /* ============== 左：过滤侧栏 ============== */
 .conv-filter {
-  /* width: 200px; */
-  min-width: 160px;
+  position: relative;
+  width: 140px;
+  min-width: 140px;
   background: var(--bg);
   border-right: 1px solid var(--border);
   overflow-y: auto;
+  transition: width var(--t), min-width var(--t);
+}
+.conv-filter--collapsed {
+  width: 62px;
+  min-width: 62px;
+}
+.conv-filter--collapsed .conv-filter__group-title {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+.conv-filter__toggle {
+  width: 20px;
+  height: 20px;
+  /* margin: 0 5px 0 0; */
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  vertical-align: middle;
+  align-self: center;
+}
+.conv-filter__toggle span {
+  display: none;
+}
+.conv-filter__toggle svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+  margin: 0 auto;
+}
+.conv-filter__toggle--collapsed svg {
+  transform: scaleX(-1);
+}
+.conv-filter__toggle:hover {
+  color: var(--primary);
 }
 
 .conv-filter__group {
@@ -922,6 +992,10 @@ defineExpose({
 }
 
 .conv-filter__group-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
   font-size: 11px;
   color: var(--text-3);
   font-weight: 600;
@@ -945,6 +1019,16 @@ defineExpose({
   cursor: pointer;
   text-align: left;
   transition: var(--t-fast);
+}
+.conv-filter__item--collapsed {
+  justify-content: center;
+  gap: 0;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+.conv-filter__item--collapsed .conv-filter__item-icon,
+.conv-filter__item--collapsed .conv-filter__icon {
+  margin: 0;
 }
 .conv-filter__item:hover { color: var(--text-1); }   /* 显式保留 hover 颜色 */
 .conv-filter__item-icon {
@@ -999,12 +1083,27 @@ defineExpose({
   border-radius: 50%;
   flex-shrink: 0;
 }
+.conv-filter__platform-icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+  opacity: 0.85;
+}
+.conv-filter__platform-icon :deep(svg) {
+  display: block;
+}
+.conv-filter__item--active .conv-filter__platform-icon {
+  opacity: 1;
+}
 /* icon 替代色块（工单状态列）。
    SVG 走 currentColor，颜色由 inline style 注入；和 .conv-filter__dot
    同样占用一行 8x8 的位置，但承载 icon。 */
 .conv-filter__icon {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
@@ -1072,27 +1171,6 @@ defineExpose({
   font-weight: 400;
   font-size: 12px;
 }
-.conv-list-head__tools {
-  display: flex;
-  gap: 4px;
-}
-.conv-list-head__tools button {
-  width: 26px;
-  height: 26px;
-  display: grid;
-  place-items: center;
-  color: var(--text-3);
-  border: 0;
-  background: transparent;
-  border-radius: var(--r-sm);
-  cursor: pointer;
-  transition: var(--t-fast);
-}
-.conv-list-head__tools button:hover {
-  background: var(--bg-mute);
-  color: var(--text-1);
-}
-
 .conv-list-search {
   padding: 8px 12px;
   border-bottom: 1px solid var(--border-soft);
