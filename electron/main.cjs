@@ -126,10 +126,44 @@ function startStaticServer(rootDir, preferredPort = 15173) {
 
 let rendererServer = null
 
+
+let splashWindow = null
+
+function createSplashWindow() {
+  splashWindow = new BrowserWindow({
+    width: 420,
+    height: 420,
+    frame: false,
+    transparent: false,
+    backgroundColor: '#0F172A',
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    closable: false,
+    skipTaskbar: true,
+    alwaysOnTop: false,
+    center: true,
+    show: false,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  })
+  splashWindow.setIgnoreMouseEvents(true)
+  splashWindow.loadFile(path.join(__dirname, 'splash.html'))
+  splashWindow.once('ready-to-show', () => splashWindow.show())
+  splashWindow.on('closed', () => { splashWindow = null })
+}
+
 // ====================== 窗口创建 ======================
 
 async function createWindow() {
+  createSplashWindow()
+
   mainWindow = new BrowserWindow({
+    show: false,
+    backgroundColor: '#0F172A',
     width: 1400,
     height: 900,
     title: '',
@@ -146,6 +180,19 @@ async function createWindow() {
     }
   })
 
+  // 主窗口首次绘制完成后关闭 splash 并显示主窗
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show()
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.close()
+    }
+  })
+  // 兜底：超过 8 秒无论主窗口是否就绪都强制关闭 splash，避免卡死
+  setTimeout(() => {
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.close()
+    }
+  }, 8000)
   // 开发模式每次启动清缓存，避免旧页面残留。但保留 localStorage 以免登录态丢失。
   const { session } = require('electron')
   session.defaultSession.clearStorageData({ storages: ['cookies', 'indexdb', 'serviceworkers', 'cachestorage'] })
@@ -186,6 +233,9 @@ async function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.close()
+    }
   })
 }
 
