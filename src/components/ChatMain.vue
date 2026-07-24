@@ -4,12 +4,9 @@ import im from '../common/im'
 import { SERVER_PATH, post, get } from '../services/api'
 import {
   MSG_NAME,
-  TYPING_STATUS,
-  PLATFORM,
-  PLATFORM_META,
-  PLATFORM_TAG_ID,
-  TICKET_GLOBAL_TAG
+  TYPING_STATUS
 } from '../common/enum'
+import { resolvePlatformMeta } from '../common/platform-utils'
 import utils from '../common/utils'
 import chatTime from '../common/chat-time-utils'
 import toast from '../common/toast'
@@ -20,6 +17,7 @@ import MessageMenu from './MessageMenu.vue'
 import ImagePreviewer from './ImagePreviewer.vue'
 import TransferDialog from './TransferDialog.vue'
 import TicketTransferDialog from './TicketTransferDialog.vue'
+import { fetchTransferCandidates } from '../services/agent'
 import ReplyQuote from './ReplyQuote.vue'
 import Avatar from './Avatar.vue'
 
@@ -28,12 +26,14 @@ const props = defineProps({
     type: Object,
     default: null
   },
+  // 客户在 IM 端的真实 user id（取自 customers/info.source_id）
+  // 用于在 im.userStatusCache 里查在线状态；不传时回退到 conversationId。
+  peerSourceId: {
+    type: String,
+    default: ''
+  },
   // Fallback / demo messages used when the IM SDK isn't connected yet.
   messages: {
-    type: Array,
-    default: () => []
-  },
-  suggestions: {
     type: Array,
     default: () => []
   },
@@ -71,14 +71,9 @@ const props = defineProps({
     type: Object,
     default: null
   },
-  pendingSuggestions: {
+  streamSuggestions: {
     type: Array,
     default: () => []
-  },
-  // 当前会话的 AI 辅助模式：0=不使用, 1=协同, 2=托管
-  autoMode: {
-    type: Number,
-    default: 0
   },
   assigned: {
     type: Boolean,
@@ -86,12 +81,19 @@ const props = defineProps({
   }
 })
 const emit = defineEmits([
-  'send', 'useSuggestion', 'revokeTakeover',
-  'clearSuggestion', 'claimTicket',
+  'send', 'useSuggestion',
+  'clearStreamSuggestion', 'clearAllStreamSuggestions', 'claimTicket',
   // 工单转移：弹层 confirm 时携带 { to_assignee_id, note, ticket_id, expected_version }
   // 父组件 MainView 负责 POST /jmate/tickets/:id/transfer 并刷新本地状态，
   // 完成后通过 chatMainRef.notifyTransferResult({ ok, message }) 回写弹层。
-  'transferTicket'
+  'transferTicket',
+  // 辅助回复模式：收到客户消息时通知 MainView 去 streamAgentChat 拿 AI 建议。
+  // payload: { agentId: string, customerMessage: string }
+  // MainView 处理完成后会通过 prop 传回的 streamSuggestions 自然渲染。
+  'requestAgentSuggestion',
+  // 收到新消息（含自己会话内收消息）时通知 MainView 触发会话列表按当前 filter 刷新。
+  // Conversations 内部 loadConversations() 会读取 active filter 后拉新列表。
+  'conversationChanged'
 ])
 
 const { Event, SentState, MessageType, ConversationType } = im
@@ -107,8 +109,12 @@ const composerText = ref('')
 const replyTo = ref(null)
 const peerTyping = ref(false)
 const peerStatusLoading = ref(false)
+// peer userId：只能取 customers/info 返回的 source_id（IM 端的真实 user id）。
+// 不做兼容 —— conversationId 是 chat 会话 id，跟 IM 端的 user id 不是一回事。
+// source_id 还没拿到时 peerUserId 为空，peerStatus 走「状态未知」。
+const peerUserId = computed(() => props.peerSourceId || '')
 const peerStatus = computed(() => {
-  const userId = props.conversation?.conversationId || props.conversation?.id
+  const userId = peerUserId.value
   if (!userId) return null
   return im.userStatusCache.get(String(userId))?.status ?? null
 })
@@ -130,8 +136,6 @@ const thinkingMsg = ref(null)
 let thinkingTimer = null
 let countdownTimer = null
 const COUNTDOWN_SECONDS = 10
-// Flag to prevent suggestions watch from clearing thinking during adoption flow
-const _adoptingSuggestion = ref(false)
 
 // Image preview
 const previewerOpen = ref(false)
@@ -147,7 +151,7 @@ const juggle = im.getCurrent()
 
 async function ensurePeerStatus() {
   if (props.isGroup) return
-  const userId = props.conversation?.conversationId || props.conversation?.id
+  const userId = peerUserId.value
   if (!userId) {
     console.warn('[ChatMain][user-status] missing peer userId', {
       conversation: props.conversation
@@ -175,32 +179,13 @@ async function ensurePeerStatus() {
     })
   }
 }
-
 const platformTag = computed(() => {
-  if (props.isGroup || !props.conversation) return null
-
-  const tags = Array.isArray(props.conversation.tags) ? props.conversation.tags : []
-  const channelTag = tags.find((item) => {
-    const tagId = item?.id ?? item?.tag
-    return tagId === TICKET_GLOBAL_TAG.CHANNEL_WIDGET
-      || tagId === TICKET_GLOBAL_TAG.CHANNEL_TELEGRAM
-      || tagId === TICKET_GLOBAL_TAG.CHANNEL_JUGGLEIM
-  })
-
-  const tagId = channelTag?.id ?? channelTag?.tag
-  let platformKey = ''
-  if (tagId === TICKET_GLOBAL_TAG.CHANNEL_WIDGET) platformKey = PLATFORM.WEB
-  else if (tagId === TICKET_GLOBAL_TAG.CHANNEL_TELEGRAM) platformKey = PLATFORM.TELEGRAM
-  else if (tagId === TICKET_GLOBAL_TAG.CHANNEL_JUGGLEIM) platformKey = PLATFORM.JUGGLECHAT
-
-  if (!platformKey) {
-    const fallback = String(props.conversation.platform || props.conversation.platformKey || '').toLowerCase()
-    if (fallback === PLATFORM_TAG_ID.WEB) platformKey = PLATFORM.WEB
-    else if (fallback === PLATFORM_TAG_ID.TELEGRAM) platformKey = PLATFORM.TELEGRAM
-    else if (fallback === PLATFORM_TAG_ID.JUGGLECHAT) platformKey = PLATFORM.JUGGLECHAT
-  }
-
-  return platformKey ? PLATFORM_META[platformKey] : null
+  // Common-platform resolver. Reads `tags` first (channel_*  → PLATFORM_META)
+  // and falls back to `conversation.platform` / `platformKey`. Returns
+  // `null` for groups or when the platform cannot be determined. The
+  // returned object is the same shape PLATFORM_META[key] produces, so the
+  // existing template bindings (color / label) keep working unchanged.
+  return resolvePlatformMeta(props.conversation, { isGroup: props.isGroup })
 })
 
 // ---------------------------------------------------------------------------
@@ -256,20 +241,6 @@ const isCurrentGroup = computed(() => {
   return props.conversation?.conversationType === ConversationType.GROUP
 })
 
-// The banner is shown when an Agent is in 托管 state. Selection alone
-// (driven by MainView's `suggestions`) does NOT trigger the banner — those
-// are two independent signals.
-const showTakeoverBanner = computed(
-  () => props.takenOverAgent
-)
-// 接管条主标题 + 副标题（对齐 agent-floating 设计稿）
-const takeoverBannerTitle = computed(() => {
-  if (props.takenOverAgent?.name) return `${props.takenOverAgent.name} 正在自动回复`
-  return 'AI 助手 正在自动回复'
-})
-const takeoverBannerSub = computed(
-  () => '所有客户消息将由该 Agent 自动响应'
-)
 // Header status tip. Driven by *selection*, not 托管. The two states are
 // independent:
 //   - An Agent is selected (operator is writing in its voice) → red tip
@@ -278,22 +249,16 @@ const takeoverBannerSub = computed(
 // The 托管 button on the right side is what triggers the takeover banner;
 // it does not affect the tip. That keeps the tip meaningful even when no
 // 托管 is active.
-// --- Header agent-mode (3 状态) ---
-// human      人工自主回复（灰）—— 无 selectedAgent 也无 takenOverAgent
+// --- Header agent-mode (2 状态) ---
+// human      人工自主回复（灰）—— 无 selectedAgent
 // assist     AI 协助回复（主色蓝）—— selectedAgent 在场
-// auto       AI 托管中（橙渐变）—— takenOverAgent 在场
-// （autoMode prop 仍是源数据 0/1/2，takeover/selection 由对应 agent 对象决定）
+// 托管（auto）状态已下线：MainView 不再下推 takenOverAgent，下方 UI 也已
+// 移除 takeover banner 与收回控制按钮。
 const currentMode = computed(() => {
-  if (props.takenOverAgent) return 'auto'
   if (props.selectedAgent) return 'assist'
   return 'human'
 })
 const modeText = computed(() => {
-  if (currentMode.value === 'auto') {
-    return props.takenOverAgent?.name
-      ? `${props.takenOverAgent.name} 正在托管`
-      : 'AI 托管中'
-  }
   if (currentMode.value === 'assist') {
     return props.selectedAgent?.name
       ? `${props.selectedAgent.name} 正在协助回复`
@@ -302,25 +267,15 @@ const modeText = computed(() => {
   return '人工自主回复'
 })
 
-// 三种 mode 对应的 svg icon
+// 两种 mode 对应的 svg icon
 const ICON_HUMAN = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>'
 const ICON_ASSIST = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v.5A3 3 0 0 0 6 8.5V9a3 3 0 0 0-3 3v0a3 3 0 0 0 3 3v3a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3v-3a3 3 0 0 0 3-3v0a3 3 0 0 0-3-3v-.5A3 3 0 0 0 15 5.5V5a3 3 0 0 0-3-3z"></path><circle cx="9" cy="13" r="1"></circle><circle cx="15" cy="13" r="1"></circle><path d="M9 17h6"></path></svg>'
-const ICON_AUTO = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"></rect><circle cx="12" cy="5" r="2"></circle><path d="M12 7v4"></path><line x1="8" y1="16" x2="8" y2="16"></line><line x1="16" y1="16" x2="16" y2="16"></line></svg>'
 const modeIconSvg = computed(() => {
-  if (currentMode.value === 'auto') return ICON_AUTO
   if (currentMode.value === 'assist') return ICON_ASSIST
   return ICON_HUMAN
 })
 
 const isAssignedConversation = computed(() => props.assigned)
-
-function onRevokeTakeover() {
-  // Banner's "收回控制" button — the source of truth for the current
-  // conversation's 托管 lives in MainView's takeoverByConv map, so we
-  // emit and let the parent drop the entry (which also calls the IM
-  // tag-remove SDK call to keep the server in sync).
-  emit('revokeTakeover')
-}
 
 // --- Ticket claim ---
 function onClaimTicket() {
@@ -377,6 +332,15 @@ watch(() => props.conversation?.conversationId, () => {
   headerMenuOpen.value = false
   ensurePeerStatus()
 })
+
+// peerUserId（= props.peerSourceId）变化时重查在线状态。
+// 关键场景：customers/info 是异步的，进入会话时 peerSourceId 还没拿到，
+// 首次 ensurePeerStatus 会因 userId 为空直接 return；等 info 返回、
+// MainView 把 source_id 透下来后再补一次。
+watch(peerUserId, (uid) => {
+  if (!uid) return
+  ensurePeerStatus()
+}, { immediate: true })
 
 // 当前显示用的工单 ID —— 优先用短 ID 友好显示；找不到就退到原始 id
 const ticketDisplayId = computed(() => {
@@ -583,22 +547,6 @@ async function onSend(text) {
     return
   }
   sendEndTyping()
-  // If the user is editing a suggestion, submit "edited" feedback before sending
-  const sug = editingSuggestion.value
-  if (sug) {
-    editingSuggestion.value = null
-    const conv = props.conversation
-    const convId = conv?.conversationId || conv?.id
-    const agentId = props.selectedAgent?.id || props.takenOverAgent?.id
-    const sId = await lookupSessionId(convId, conv?.conversationType)
-    if (sId) {
-      post(SERVER_PATH.AGENT_SESSION_FEEDBACK(sId), {
-        action: 'edited',
-        agent_msg_id: sug.agent_msg_id || '',
-        final_reply_text: text || ''
-      }).catch((e) => console.warn('[ChatMain] feedback edited failed', e))
-    }
-  }
   await sendText(text)
 }
 
@@ -1116,9 +1064,39 @@ function onTypingMessage(message) {
   }
 }
 
+// 当前打开会话收到新消息时，把这条会话的未读清零。
+// SDK 会发 CLEAR_UNREAD → CONVERSATION_CHANGED，Conversations 组件
+// 的 mapConversation 会基于 unreadCount 重渲染列表项。
+async function clearCurrentUnread() {
+  if (!juggle || !im.isConnected()) return
+  const conv = props.conversation
+  if (!conv?.conversationId || !conv?.conversationType) return
+  // 取最新一条已展示消息的 unreadIndex；若没有就传 0
+  const last = imMessages[imMessages.length - 1]
+  const unreadIndex = Number(last?.unreadIndex ?? last?.messageIndex ?? 0) || 0
+  try {
+    await juggle.clearUnreadcount([{
+      conversationType: conv.conversationType,
+      conversationId: conv.conversationId,
+      unreadIndex
+    }])
+  } catch (e) {
+    console.warn('[ChatMain] clearUnreadcount failed', e)
+  }
+}
+
 function onMessageReceived(message) {
   if (!message) return
-  if (!isCurrentConversation(message)) return
+  // 2026-07-21：入口诊断日志。每条 MESSAGE_RECEIVED 都打一条，方便排查
+  // "onMessageReceived 根本没被 SDK 推" / "isCurrentConversation 把消息过滤了"
+  // / "走到 else if 但没 emit" 这类问题。稳定后可以删。
+  if (!isCurrentConversation(message)) {
+    console.log('[ChatMain] onMessageReceived ignored (not current conversation)', {
+      msgId: message.messageId, tid: message.tid,
+      msgCid: message.conversationId, msgCtype: message.conversationType
+    })
+    return
+  }
   // The SDK may deliver an "isStatus" typing notification via MESSAGE_RECEIVED
   // for the typing message type. We don't render those.
   if (message.isStatus || message.name === MSG_NAME.TYPING_NTF) {
@@ -1146,11 +1124,50 @@ function onMessageReceived(message) {
   // agent's auto-reply coming back from the server).
   if (isSelfReceipt) {
     clearThinkingState()
-  } else if (!isCurrentGroup.value && props.autoMode !== 0) {
-    thinkingMsg.value = { tid: 'thinking_' + Date.now(), timestamp: Date.now() }
-    startThinkingTimer()
+  }
+  // 2026-07-20：辅助回复模式（当前工单已 binded 一个 agent）下，
+  // 客户新消息进来时通知 MainView 去 streamAgentChat 拿 AI 建议。
+  // 人工回复（无 selectedAgent）下不触发。
+  // 跳过自己发出的回执（同上 isSelfReceipt 已 return thinking）。
+  // 2026-07-20 v2 排查更新：之前这条分支"看起来应该触发但实际不触发"，
+  // 把每个守卫都拆开方便定位。message.content 可能是 string 也可能是
+  // { content: '...', type: ... } 对象，统一抽 text 后再判空。
+  else if (!isSelfReceipt) {
+    const selected = props.selectedAgent
+    const c = message?.content
+    const text = c && typeof c === 'object' ? c.content : c
+    if (selected && selected.id && text) {
+      // 命中：辅助态 + 客户消息有内容 → 触发 stream
+      console.log('[ChatMain] trigger agent-assist', {
+        agentId: selected.id,
+        msgShape: typeof c,
+        textPreview: String(text).slice(0, 30)
+      })
+      thinkingMsg.value = { tid: 'thinking_' + Date.now(), timestamp: Date.now() }
+      console.log('[ChatMain] thinking bubble shown------', selected.id, text, thinkingMsg.value)
+      startThinkingTimer()
+      emit('requestAgentSuggestion', {
+        agentId: selected.id,
+        customerMessage: String(text)
+      })
+      // 当前打开的会话收到客户消息 → 清未读（异步，不阻塞流式触发）
+      clearCurrentUnread()
+    } else {
+      // 守卫失败：打印关键字段方便排查"为什么没触发"
+      console.log('[ChatMain] skip agent-assist', {
+        hasSelected: !!selected,
+        agentId: selected?.id,
+        msgShape: typeof c,
+        hasText: !!text
+      })
+    }
+    // 人工回复模式（无 selectedAgent）：客户消息同样需要清未读
+    clearCurrentUnread()
   }
   scrollToBottom()
+  // 不论是否当前会话：让 MainView 通知会话列表按当前 filter 重拉一次
+  // （不在此处判断 isCurrentConversation，因为 filter 命中与否由 Conversations 决定）。
+  emit('conversationChanged')
 }
 
 function onMessageRecalled(notify) {
@@ -1260,29 +1277,6 @@ watch(
   { immediate: true }
 )
 
-// Auto-scroll to bottom when agent suggestions appear
-watch(
-  () => props.suggestions?.length ?? 0,
-  (len) => {
-    if (_adoptingSuggestion.value) {
-      _adoptingSuggestion.value = false
-      if (len > 0) scrollToBottom()
-      return
-    }
-    if (len > 0) { clearThinkingState(); scrollToBottom() }
-  }
-)
-watch(
-  () => props.pendingSuggestions?.length ?? 0,
-  (len) => {
-    if (_adoptingSuggestion.value) {
-      _adoptingSuggestion.value = false
-      if (len > 0) scrollToBottom()
-      return
-    }
-    if (len > 0) { clearThinkingState(); scrollToBottom() }
-  }
-)
 
 onMounted(() => {
   ensurePeerStatus()
@@ -1321,97 +1315,34 @@ function closeAllMenus() {
 // Header / takeover helpers (kept from the pre-IM version)
 // ---------------------------------------------------------------------------
 
-// Suggestion feedback: tracks which suggestion is being edited so we can
-// submit an "edited" feedback when the user sends the modified text.
-const editingSuggestion = ref(null)
-
-async function lookupSessionId(convId, convType) {
-  if (!convId) return null
-  const sessionId = convId + '_' + String(convType || '')
-  try {
-    const res = await get(SERVER_PATH.AGENT_SESSION_LOOKUP, { session_id: sessionId })
-    if (res?.code === 0 && res.data?.session_id) {
-      return res.data.session_id
-    }
-  } catch (e) {
-    console.warn('[ChatMain] session lookup failed', e)
-  }
-  return null
+// 2026-07-21：点 × 删除当前流式建议条目（按 trace_id）。
+//   不动其他会话、不自动清理 —— 用户明确"只有手动 × 才删"。
+// 旧的 dismissSuggestions（整组关闭）已下线。
+function handleRejectSuggestion(entry) {
+  if (!entry?.traceId) return
+  emit('clearStreamSuggestion', entry.traceId)
 }
 
-async function handleAdoptSuggestion(suggestion) {
-  if (!suggestion) return
-  // 仅当有 agent_msg_id 时调用 Feedback API（实时 pending 建议没有）
-  if (suggestion.agent_msg_id) {
-    const conv = props.conversation
-    const convId = conv?.conversationId || conv?.id
-    const agentId = props.selectedAgent?.id || props.takenOverAgent?.id
-    const sId = await lookupSessionId(convId, conv?.conversationType)
-    if (sId) {
-      try {
-        await post(SERVER_PATH.AGENT_SESSION_FEEDBACK(sId), {
-          action: 'adopted',
-          agent_msg_id: suggestion.agent_msg_id || '',
-          final_reply_text: suggestion.text || ''
-        })
-      } catch (e) {
-        console.warn('[ChatMain] feedback adopted failed', e)
-      }
-    }
-  }
-  _adoptingSuggestion.value = true
-  emit('clearSuggestion', suggestion.msg_id)
-  await sendText(suggestion.text)
+// header 上的 ×：清掉当前会话的全部流式建议（按 sid）。
+function handleCloseAllSuggestions() {
+  emit('clearAllStreamSuggestions')
 }
 
-function handleEditSuggestion(suggestion) {
-  handleSuggestionClick(suggestion)
-  editingSuggestion.value = suggestion
-  // 编辑即视为处理，从 pending 队列清除
-  if (suggestion.msg_id) {
-    emit('clearSuggestion', suggestion.msg_id)
-  }
-}
-
-async function handleRejectSuggestion(suggestion) {
-  console.log('[ChatMain] handleRejectSuggestion', suggestion)
-  if (!suggestion) return
-  // 仅当有 agent_msg_id 时调用 Feedback API
-  if (suggestion.agent_msg_id) {
-    const conv = props.conversation
-    const convId = conv?.conversationId || conv?.id
-    const agentId = props.selectedAgent?.id || props.takenOverAgent?.id
-    const sId = await lookupSessionId(convId, conv?.conversationType)
-    if (sId) {
-      try {
-        await post(SERVER_PATH.AGENT_SESSION_FEEDBACK(sId), {
-          action: 'rejected',
-          agent_msg_id: suggestion.agent_msg_id || '',
-          reject_reason: ''
-        })
-      } catch (e) {
-        console.warn('[ChatMain] feedback rejected failed', e)
-      }
-    }
-  }
-  emit('clearSuggestion', suggestion.msg_id)
-  emit('dismissSuggestions')
-}
-
-function handleSuggestionClick(suggestion) {
-  // The composer state lives here (passed into MessageSender via v-model),
-  // so the click handler should fill the input directly — reaching into the
-  // DOM from the parent would be brittle and skip Vue's reactivity.
-  if (!suggestion) return
-  composerText.value = suggestion.text || ''
-  // Drop any pending reply quote: the user is composing a new suggested
-  // reply, not responding to the quoted message.
+// 流式建议采用：把 entry.content 填入 composer；流式且为空时拒绝采用，
+//   避免半成品被发出。emit('useSuggestion', entry) 留给 MainView 做后续埋点。
+function handleSuggestionClick(entry) {
+  if (!entry) return
+  const text = entry.content || ''
+  if (entry.streaming && !text) return
+  composerText.value = text
   replyTo.value = null
+  // 采用后清掉当前会话的全部 AI 建议（用户已选定，无需保留）。
+  emit('clearAllStreamSuggestions')
   nextTick(() => {
     const el = document.querySelector('.jm-sender__input')
     el?.focus()
   })
-  emit('useSuggestion', suggestion)
+  emit('useSuggestion', entry)
 }
 
 function onCancelReply() {
@@ -1520,35 +1451,6 @@ defineExpose({ notifyTransferResult, openTransfer })
       </div>
     </div>
 
-    <!-- Takeover Banner —— AI 托管中提示条 (对齐 agent-floating 强提示) -->
-    <div v-if="showTakeoverBanner" class="tyn-takeover-banner animate-slideDown">
-      <div class="tyn-takeover-banner__icon" aria-hidden="true">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"></path><rect x="2" y="8" width="20" height="12" rx="2"></rect><path d="M2 14h20M6 8v4M10 8v4M14 8v4M18 8v4"></path></svg>
-      </div>
-      <div class="tyn-takeover-banner__body">
-        <div class="tyn-takeover-banner__title">
-          <span class="tyn-takeover-banner__pulse"></span>
-          <span>{{ takeoverBannerTitle }}</span>
-        </div>
-        <div class="tyn-takeover-banner__sub">{{ takeoverBannerSub }}</div>
-      </div>
-      <button class="tyn-takeover-banner__btn" @click="onRevokeTakeover">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
-        收回控制
-      </button>
-    </div>
-
-    <!-- Pending Agent Suggestions -->
-    <!-- Pending Agent Suggestions —— 复用基础类 + warning 修饰 -->
-    <div v-if="pendingSuggestions.length > 0" class="tyn-takeover-banner tyn-takeover-banner--warning animate-slideDown">
-      <div class="tyn-takeover-banner__body">
-        <div class="tyn-takeover-banner__title">
-          <span class="tyn-takeover-banner__pulse tyn-takeover-banner__pulse--warning"></span>
-          <span>{{ pendingSuggestions.length }} 条大模型回复建议待处理</span>
-        </div>
-      </div>
-    </div>
-
     <!-- Messages Area -->
     <div class="jm-messages" ref="scrollEl" @scroll="onScroll">
       <template v-if="isGroup">
@@ -1606,7 +1508,7 @@ defineExpose({ notifyTransferResult, openTransfer })
           />
           <!-- Thinking bubble: shown while waiting for agent reply (AI辅助模式) -->
           <div
-            v-if="thinkingMsg && !isCurrentGroup && autoMode !== 0"
+            v-if="thinkingMsg && !isCurrentGroup && props.selectedAgent"
             class="jm-thinking-bubble"
             :class="{ 'jm-thinking-bubble--timeout': thinkingMsg.timeout }"
           >
@@ -1624,30 +1526,6 @@ defineExpose({ notifyTransferResult, openTransfer })
       </template>
     </div>
 
-    <!-- Agent Suggestions (only in conversation mode) -->
-    <div v-if="suggestions.length > 0" class="tyn-agent-suggestions">
-      <button
-        v-for="(suggestion, index) in suggestions"
-        :key="index"
-        type="button"
-        class="tyn-suggestion-item"
-        @click="handleSuggestionClick(suggestion)"
-      >
-        <div class="tyn-suggestion-item__icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9.7 17 4 11.3l1.4-1.4 4.3 4.3 9-9L20 6.7z"/></svg>
-        </div>
-        <div class="tyn-suggestion-item__body">
-          <div class="tyn-suggestion-item__label">{{ suggestion.agent }} · AI 回复建议</div>
-          <div class="tyn-suggestion-item__text">{{ suggestion.text }}</div>
-        </div>
-        <span
-          class="tyn-suggestion-item__close"
-          role="button"
-          aria-label="关闭建议"
-          @click.stop="handleRejectSuggestion(suggestion)"
-        >×</span>
-      </button>
-    </div>
 
     <!-- Reply quote banner -->
     <ReplyQuote v-if="replyTo && !isGroup" :message="replyTo" @cancel="onCancelReply" />
@@ -1674,6 +1552,42 @@ defineExpose({ notifyTransferResult, openTransfer })
           </span>
         </div>
       </div>
+    </div>
+
+    <!-- 2026-07-21：流式回复建议卡片，贴在输入框上方。
+         数据来自 MainView 按 trace_id 维护的 streamSuggestions（当前会话过滤后）。
+         streaming=true 时显示脉冲点；content 随 token 增量更新；done 后保留展示。
+         点 × → emit('clearStreamSuggestion', traceId)，仅删当前条目。 -->
+    <div v-if="streamSuggestions.length > 0" class="jm-suggestion-stream animate-slideDown">
+      <div class="jm-suggestion-stream__header">
+        <span class="jm-suggestion-stream__pulse"></span>
+        <span class="jm-suggestion-stream__title">
+          AI 回复建议 · {{ streamSuggestions.length }} 条
+        </span>
+        <span
+          class="jm-suggestion-stream__close"
+          role="button"
+          aria-label="关闭建议"
+          @click="handleCloseAllSuggestions"
+        >×</span>
+      </div>
+      <button
+        v-for="entry in streamSuggestions"
+        :key="entry.traceId"
+        type="button"
+        class="jm-suggestion-stream__item"
+        :class="{ 'is-streaming': entry.streaming }"
+        @click="handleSuggestionClick(entry)"
+      >
+        <div class="jm-suggestion-stream__body">
+          <div class="jm-suggestion-stream__text">{{ entry.content || (entry.streaming ? 'AI 在思考…' : '（空）') }}</div>
+        </div>
+        <span
+          v-if="entry.streaming"
+          class="jm-suggestion-stream__dots"
+          aria-label="生成中"
+        >●●●</span>
+      </button>
     </div>
 
     <!-- Chat Input (P0+ text + P1 attachments) -->
@@ -1735,6 +1649,7 @@ defineExpose({ notifyTransferResult, openTransfer })
       :ticket-id="conversation?.ticket_id || ''"
       :ticket-display-id="ticketDisplayId"
       :current-assignee-name="'我'"
+      :fetch-candidates="fetchTransferCandidates"
       @confirm="onTicketTransferConfirm"
       @cancel="closeTransfer"
     />
@@ -1983,104 +1898,8 @@ defineExpose({ notifyTransferResult, openTransfer })
   background: rgba(0, 0, 0, 0.06);
 }
 
-
-/* ==========================================================================
-   Agent Suggestions（完全对齐 module-4 .ai-suggest 视觉）
-   - 容器：浅紫渐变 + 1px dashed 蓝色边
-   - 每条：横向  icon | body(label + text) | 右上角关闭 ×
-   ========================================================================== */
-.tyn-agent-suggestions {
-  margin: 8px 20px 0;
-  padding: 10px 12px;
-  background: linear-gradient(90deg, var(--ai-faint), #fff);
-  border: 1px dashed var(--ai);
-  border-radius: var(--r);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.tyn-suggestion-item {
-  position: relative;
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 4px 24px 4px 0;     /* 右侧给关闭按钮留位 */
-  cursor: pointer;
-  width: 100%;
-  text-align: left;             /* 覆盖 <button> 默认居中 */
-  background: transparent;
-  border: 0;
-  font: inherit;
-  color: inherit;
-}
-
-.tyn-suggestion-item:hover .tyn-suggestion-item__close {
-  color: var(--text-2);
-}
-
-.tyn-suggestion-item__icon {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  background: linear-gradient(135deg, var(--ai), #A78BFA);
-  color: #fff;
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-}
-
-.tyn-suggestion-item__icon svg {
-  width: 13px;
-  height: 13px;
-}
-
-.tyn-suggestion-item__body {
-  flex: 1;
-  min-width: 0;
-}
-
-.tyn-suggestion-item__label {
-  font-size: 11px;
-  color: var(--ai);
-  font-weight: 600;
-  margin-bottom: 3px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.tyn-suggestion-item__text {
-  font-size: 13px;
-  color: var(--text-1);
-  line-height: 1.5;
-  word-break: break-word;
-}
-
-/* 右上角关闭按钮 */
-.tyn-suggestion-item__close {
-  position: absolute;
-  top: 2px;
-  right: 0;
-  width: 18px;
-  height: 18px;
-  border-radius: 4px;
-  display: grid;
-  place-items: center;
-  color: var(--text-3);
-  font-size: 14px;
-  line-height: 1;
-  cursor: pointer;
-  transition: var(--t-fast);
-  user-select: none;
-}
-
-.tyn-suggestion-item__close:hover {
-  background: var(--bg-mute);
-  color: var(--text-1);
-}
-
+/* === 2026-07-21 流式回复建议（streamSuggestions 卡片列表）===
+   复用 --ai / --ai-faint / --text-* 变量，保持与 tyn-suggestion 一致的视觉 */
 @keyframes dot-bounce {
   0%, 80%, 100% {
     transform: scale(0.4);
@@ -2091,4 +1910,96 @@ defineExpose({ notifyTransferResult, openTransfer })
     opacity: 1;
   }
 }
+
+.jm-suggestion-stream {
+  margin: 8px 20px 0;
+  padding: 10px 12px;
+  background: linear-gradient(90deg, var(--ai-faint), #fff);
+  border: 1px dashed var(--ai);
+  border-radius: var(--r);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.jm-suggestion-stream__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--ai);
+  margin-bottom: 2px;
+}
+.jm-suggestion-stream__title {
+  flex: 1;
+  min-width: 0;
+}
+.jm-suggestion-stream__pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ai);
+  animation: dot-bounce 1.2s ease-in-out infinite;
+}
+.jm-suggestion-stream__item {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  border-radius: 6px;
+  transition: background-color 0.15s ease;
+}
+.jm-suggestion-stream__item:hover {
+  background: var(--bg-mute, rgba(0,0,0,0.04));
+}
+.jm-suggestion-stream__item.is-streaming {
+  background: rgba(124, 92, 255, 0.06);
+}
+.jm-suggestion-stream__body {
+  flex: 1;
+  min-width: 0;
+}
+.jm-suggestion-stream__text {
+  font-size: 13px;
+  color: var(--text-1, #1f1f1f);
+  line-height: 1.5;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.jm-suggestion-stream__dots {
+  font-size: 8px;
+  letter-spacing: 2px;
+  color: var(--ai);
+  animation: dot-bounce 1.2s ease-in-out infinite;
+  align-self: center;
+  flex-shrink: 0;
+}
+.jm-suggestion-stream__close {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  display: grid;
+  place-items: center;
+  color: var(--text-3, #999);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  user-select: none;
+}
+.jm-suggestion-stream__close:hover {
+  background: var(--bg-mute, rgba(0,0,0,0.06));
+  color: var(--text-1, #1f1f1f);
+}
+
 </style>

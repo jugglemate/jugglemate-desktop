@@ -35,8 +35,7 @@ const props = defineProps({
   selectedAgentId: { type: [String, Number], default: null }
 })
 
-console.log('[AgentPanel] props-----:', props.customer, props.isAssigned, props.agents, props.selectedAgentId)
-const emit = defineEmits(['select-agent'])
+const emit = defineEmits(['select-agent', 'customer-info-loaded'])
 
 // Tab 列表。agent 列表 tab 仅在已分配时进入可用态，未分配时直接不渲染入口。
 const tabs = computed(() => {
@@ -78,6 +77,7 @@ const ticketsError = ref('')
 const conversationNames = ref({})   // { [ticket_id]: string }
 
 let _loadToken = 0   // 防止旧请求覆盖新数据（详情 + 工单共用一个 token）
+let _loadedFor = ''  // 最近一次成功加载的 customerId，避免重复点同一会话时重发
 
 async function loadCustomer(customerId) {
   console.log('[AgentPanel] loadCustomer start, customerId =', customerId)
@@ -87,28 +87,50 @@ async function loadCustomer(customerId) {
     customerDetail.value = null
     tickets.value = []
     conversationNames.value = {}
+    _loadedFor = ''
     return
   }
+  // 重复点同一会话（customerId 不变）不再重发请求 —— 详情 / 工单是与
+  // customer 绑定的，与 tab / 会话选择次数无关。切到新 customerId 时
+  // 由 watch 触发，token 也递增以让旧请求自然过期。
+  if (customerId === _loadedFor) return
   const token = ++_loadToken
   customerDetailLoading.value = true
   ticketsLoading.value = true
   customerDetailError.value = ''
   ticketsError.value = ''
   try {
-    // 客户详情 + 历史工单并行拉，任一失败不影响另一个
-    const [detail, items] = await Promise.all([
-      fetchCustomerDetail(customerId).catch((e) => {
-        console.warn('[AgentPanel] fetchCustomerDetail failed', e)
-        return null
-      }),
-      fetchCustomerTickets(customerId).catch((e) => {
+    // 两步走：先 info?ticket_id=<ticketId> 拿 canonical customer_id，
+    // 再用这个 customer_id 调 tickets。info 失败 / 没拿到 customer_id
+    // 时直接跳过 tickets —— 历史工单必须挂在某个 customer 下，缺这个
+    // 锚点时拉到的列表是错的，所以宁可空着也别用 IM 端的 targetId 凑数。
+    const detail = await fetchCustomerDetail(customerId).catch((e) => {
+      console.warn('[AgentPanel] fetchCustomerDetail failed', e)
+      return null
+    })
+    if (token !== _loadToken) return   // 已被新请求覆盖
+    customerDetail.value = detail
+    // 把 info 拉到的最新 customer 信息（含 last_seen_at 等）抛给父级，
+    // 由父级决定是否同步刷新 IM 端的 peer status。
+    emit('customer-info-loaded', { ticketId: customerId, detail })
+
+    const realCustomerId = detail?.customer_id
+    let items = []
+    if (realCustomerId) {
+      items = await fetchCustomerTickets(realCustomerId).catch((e) => {
         console.warn('[AgentPanel] fetchCustomerTickets failed', e)
         return []
       })
-    ])
-    if (token !== _loadToken) return   // 已被新请求覆盖
-    customerDetail.value = detail
+      if (token !== _loadToken) return
+    } else {
+      // info 失败或返回里没有 customer_id —— 不请求历史工单
+      console.warn(
+        '[AgentPanel] skip fetchCustomerTickets: info 未返回 customer_id',
+        { ticketId: customerId, detail }
+      )
+    }
     tickets.value = items
+    _loadedFor = customerId   // 标记本次成功加载的 customerId
 
     // 异步补全每条工单的会话名（im.getConversation 单独发，无须阻塞列表渲染）
     conversationNames.value = {}
@@ -130,13 +152,12 @@ async function loadCustomer(customerId) {
   }
 }
 
-// 切到客户详情 tab 或 customer.id 变化时拉一次（详情 + 工单一起）
+// 仅当 customer.id 变化时拉一次（详情 + 工单一起）。切 tab 不触发，
+// 重新点同一会话也不触发（loadCustomer 内部 _loadedFor 守卫）。
 watch(
-  () => [activeTab.value, customer.value?.id],
-  ([tab, id]) => {
-    if (tab === 'customer' && id) {
-      void loadCustomer(id)
-    }
+  () => customer.value?.id,
+  (id) => {
+    if (id) void loadCustomer(id)
   },
   { immediate: true }
 )
@@ -150,6 +171,18 @@ onBeforeUnmount(() => {
 const customerIdDisplay = computed(() =>
   customerDetail.value?.customer_id || customer.value?.id || '—'
 )
+// 当前会话的 ticket_id —— 在 jugglemate 私聊模型里 conversationId === targetId
+// === ticket_id（见 MainView.currentCustomerInfo 的兜底链）。历史工单接口
+// 返回的列表里也包含当前工单（同 customer_id 下的所有 ticket），UI 上把它
+// 排除掉，避免侧栏里同时出现"自己"和"当前打开的会话"两条重复项。
+const currentTicketId = computed(() => customer.value?.id || '')
+// 渲染到侧栏的工单：剔除当前工单。仅渲染层过滤，保留原始 tickets 方便调试
+// / 后续如果需要展示"含当前工单"再做反向开关。
+const displayedTickets = computed(() => {
+  const cur = currentTicketId.value
+  if (!cur) return tickets.value
+  return tickets.value.filter((t) => t && t.ticket_id !== cur)
+})
 // 派生：基本信息的「name」优先取后端 nickname，回退到会话给的 name
 const customerNameDisplay = computed(() =>
   customerDetail.value?.nickname || customer.value?.name || '—'
@@ -176,7 +209,7 @@ const demoProfile = {
   avatar: 'https://i.pravatar.cc/120?img=12',
   title: '',
   email: ' jugglelChat@im.cn',
-  phone: '+86 18810937339',
+  phone: '+86 18800138745',
   location: '北京'
 }
 
@@ -192,6 +225,16 @@ function statusMeta(status) {
   const num = Number(status)
   if (TICKET_STATUS_META[num]) return TICKET_STATUS_META[num]
   return { label: '未知', color: '#9CA3AF' }
+}
+
+// 渲染 Agent 列表里的创建时间（RFC3339 → 「YYYY-MM-DD」）。
+// 输入非法时返回空串，让模板 v-if 自然隐藏。
+function formatAgentDate(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 function ticketName(ticket) {
   if (!ticket) return ''
@@ -288,10 +331,10 @@ function onClickAgent(agent) {
           <div class="info-head">历史工单</div>
           <div v-if="ticketsLoading" class="history-empty">加载中…</div>
           <div v-else-if="ticketsError" class="history-empty history-empty--err">{{ ticketsError }}</div>
-          <div v-else-if="tickets.length === 0" class="history-empty">暂无历史工单</div>
+          <div v-else-if="displayedTickets.length === 0" class="history-empty">暂无历史工单</div>
           <ul v-else class="ticket-list">
             <li
-              v-for="t in tickets"
+              v-for="t in displayedTickets"
               :key="t.ticket_id"
               class="ticket-item"
             >
@@ -341,15 +384,38 @@ function onClickAgent(agent) {
           }"
           @click="onClickAgent(agent)"
         >
-          <div class="agent-avatar">
-            <Avatar
-              :name="agent.name"
-              :avatar="agent.emoji"
-              size="md"
-            />
-          </div>
-          <div class="agent-info">
-            <div class="agent-name">{{ agent.name }}</div>
+          <div class="agent-card">
+            <div class="agent-card__head">
+              <div class="agent-card__title-row">
+                <span class="agent-card__name">{{ agent.name }}</span>
+                <span
+                  v-if="agent.isSystem"
+                  class="agent-badge agent-badge--system"
+                  title="系统兜底 Agent，所有坐席可见"
+                >系统</span>
+              </div>
+              <div v-if="agent.ownerName" class="agent-card__owner">
+                归属：{{ agent.ownerName }}
+              </div>
+            </div>
+            <div class="agent-card__meta">
+              <span
+                v-if="agent.primaryModel"
+                class="agent-card__model"
+                :title="`主模型：${agent.primaryModel}`"
+              >{{ agent.primaryModel }}</span>
+              <span class="agent-card__counts">
+                <span class="agent-card__count" title="已挂载知识库数量">
+                  <span class="agent-card__count-num">{{ agent.knowledgeCount ?? 0 }}</span> 知识库
+                </span>
+                <span class="agent-card__count" title="已挂载工具数量">
+                  <span class="agent-card__count-num">{{ agent.toolCount ?? 0 }}</span> 工具
+                </span>
+              </span>
+            </div>
+            <div v-if="agent.createdAt" class="agent-card__date">
+              {{ formatAgentDate(agent.createdAt) }}
+            </div>
           </div>
         </div>
 
@@ -698,58 +764,133 @@ function onClickAgent(agent) {
   flex-direction: column;
   padding: 4px 0;
 }
+.agent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 8px;
+}
 .agent-item {
   position: relative;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 16px;
+  display: block;
   cursor: pointer;
-  transition: background var(--t-fast);
-  background: var(--bg);
-  border-bottom: 1px solid var(--border-soft);
+  transition: background var(--t-fast), border-color var(--t-fast);
+  background: var(--bg-elevated, var(--bg));
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 10px 12px;
+  overflow: hidden;
 }
 .agent-item:hover {
   background: var(--bg-soft);
+  border-color: var(--primary-soft, var(--border-soft));
 }
 .agent-item.active {
   background: var(--primary-faint);
-}
-.agent-item.active::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: var(--primary);
+  border-color: var(--primary);
 }
 .agent-item.disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
-.agent-avatar {
-  position: relative;
-  flex-shrink: 0;
-}
-.agent-info {
-  flex: 1;
+.agent-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   min-width: 0;
+}
+.agent-card__head {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
 }
-.agent-name {
+.agent-card__title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.agent-card__name {
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text-1);
   line-height: 1.3;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+  min-width: 0;
 }
-.agent-item.active .agent-name {
+.agent-item.active .agent-card__name {
+  color: var(--primary);
+}
+.agent-card__owner {
+  font-size: 11px;
+  color: var(--text-3, #6B7280);
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.agent-card__model {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--primary);
+  background: var(--primary-faint);
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1.3;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 1;
+  min-width: 0;
+}
+.agent-card__counts {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-2, #4B5563);
+  line-height: 1.3;
+  flex-shrink: 0;
+}
+.agent-card__count {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+}
+.agent-card__count-num {
   font-weight: 600;
+  color: var(--text-1);
+}
+.agent-card__date {
+  font-size: 10px;
+  color: var(--text-3, #9CA3AF);
+  line-height: 1.3;
+  letter-spacing: 0.2px;
+}
+.agent-badge {
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  flex-shrink: 0;
+}
+.agent-badge--system {
+  color: var(--text-3, #6B7280);
+  background: var(--bg-mute, rgba(107, 114, 128, 0.12));
 }
 
 .empty {

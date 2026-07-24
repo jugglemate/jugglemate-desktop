@@ -11,7 +11,7 @@ import { STORAGE, ERROR_CODE } from '../common/enum'
  *   im_token → token
  *   nick_name → name
  *   avatar   → portrait
- *   role     → role (1 = admin, others = regular agent; server-defined)
+ *   role     → role (2 = admin, others = regular agent; server-defined)
  * Plus a `isUsed` flag for the account-switcher list.
  */
 function buildUser(data, { isUsed = false } = {}) {

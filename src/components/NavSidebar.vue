@@ -43,6 +43,8 @@ const currentUserPortrait = computed(() => currentUser.value?.portrait || curren
 
 // 角色/工号从登录接口拿，没有就回退空串（不写死假数据）
 const currentUserRole = computed(() => currentUser.value?.role_name || currentUser.value?.title || '')
+// 管理员判断：登录接口 role === 2（与 UserDrawer.isAdmin 同口径）
+const isAdmin = computed(() => Number(currentUser.value?.role) === 2)
 const currentUserIdNumber = computed(() => {
   const id = currentUser.value?.employee_id || currentUser.value?.id
   const group = currentUser.value?.group_name
@@ -120,17 +122,25 @@ const navItems = [
     label: '收件箱',
     svg: `<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"></polyline><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path>`
   },
+  // {
+  //   key: 'team',
+  //   label: '团队',
+  //   svg: `<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path>`
+  // },
+  // {
+  //   key: 'data',
+  //   label: '知识库',
+  //   svg: `<line x1="12" y1="20" x2="12" y2="10"></line><line x1="18" y1="20" x2="18" y2="4"></line><line x1="6" y1="20" x2="6" y2="16"></line>`
+  // },
   {
-    key: 'team',
-    label: '团队',
-    svg: `<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path>`
-  },
-  {
-    key: 'data',
-    label: '知识库',
-    svg: `<line x1="12" y1="20" x2="12" y2="10"></line><line x1="18" y1="20" x2="18" y2="4"></line><line x1="6" y1="20" x2="6" y2="16"></line>`
+    key: 'tickets',
+    label: '全量工单',
+    adminOnly: true,
+    svg: `<line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line>`
   }
 ]
+// 过滤 adminOnly 项（仅管理员可见）
+const visibleNavItems = computed(() => navItems.filter((it) => !it.adminOnly || isAdmin.value))
 </script>
 
 <template>
@@ -159,9 +169,9 @@ const navItems = [
       />
     </div>
 
-    <!-- 3 个 nav-item -->
+    <!-- nav-items：adminOnly 的项仅管理员可见 -->
     <button
-      v-for="item in navItems"
+      v-for="item in visibleNavItems"
       :key="item.key"
       class="nav-item tip"
       :class="{ active: activeNav === item.key }"
@@ -179,7 +189,7 @@ const navItems = [
 
     <div class="spacer"></div>
 
-    <button class="nav-item tip" data-tip="管理工台" type="button" @click="openAdminConsole">
+    <button v-if="isAdmin" class="nav-item tip" data-tip="管理后台" type="button" @click="openAdminConsole">
       <svg width="18" height="18" viewBox="0 0 1024 1024" fill="currentColor" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M732.672 984.064H303.616c-14.336 0-25.6-11.264-25.6-25.6s11.264-25.6 25.6-25.6h429.056c14.336 0 25.6 11.264 25.6 25.6s-11.264 25.6-25.6 25.6zM518.144 947.2c-14.336 0-25.6-11.264-25.6-25.6V794.624c0-14.336 11.264-25.6 25.6-25.6s25.6 11.264 25.6 25.6V921.6c0 14.336-11.264 25.6-25.6 25.6zM309.76 677.888c-14.336 0-25.6-11.264-25.6-25.6V277.504c0-14.336 11.264-25.6 25.6-25.6s25.6 11.264 25.6 25.6v374.784c0 14.336-11.264 25.6-25.6 25.6zM247.808 399.36a61.952 61.952 0 1 0 123.904 0 61.952 61.952 0 1 0-123.904 0zM309.76 486.912c-48.128 0-87.552-39.424-87.552-87.552s39.424-87.552 87.552-87.552 87.552 39.424 87.552 87.552-39.424 87.552-87.552 87.552z m0-123.904c-19.968 0-36.352 16.384-36.352 36.352s16.384 36.352 36.352 36.352 36.352-16.384 36.352-36.352-16.384-36.352-36.352-36.352z m402.432 314.88c-14.336 0-25.6-11.264-25.6-25.6V277.504c0-14.336 11.264-25.6 25.6-25.6s25.6 11.264 25.6 25.6v374.784c0 14.336-11.264 25.6-25.6 25.6zM650.24 399.36a61.952 61.952 0 1 0 123.904 0 61.952 61.952 0 1 0-123.904 0zM712.192 486.912c-48.128 0-87.552-39.424-87.552-87.552s39.424-87.552 87.552-87.552c48.128 0 87.552 39.424 87.552 87.552s-39.424 87.552-87.552 87.552z m0-123.904c-19.968 0-36.352 16.384-36.352 36.352s16.384 36.352 36.352 36.352 36.352-16.384 36.352-36.352-16.384-36.352-36.352-36.352zM516.608 678.4c-14.336 0-25.6-11.264-25.6-25.6V278.016c0-14.336 11.264-25.6 25.6-25.6s25.6 11.264 25.6 25.6V652.8c0 14.336-11.264 25.6-25.6 25.6zM454.656 530.944a61.952 61.952 0 1 0 123.904 0 61.952 61.952 0 1 0-123.904 0zM516.608 618.496c-48.128 0-87.552-39.424-87.552-87.552 0-48.128 39.424-87.552 87.552-87.552 48.128 0 87.552 39.424 87.552 87.552 0 48.128-39.424 87.552-87.552 87.552z m0-123.904c-19.968 0-36.352 16.384-36.352 36.352s16.384 36.352 36.352 36.352 36.352-16.384 36.352-36.352-16.384-36.352-36.352-36.352zM988.16 820.224H47.616c-14.336 0-25.6-11.264-25.6-25.6v-670.72c0-14.336 11.264-25.6 25.6-25.6H988.16c14.336 0 25.6 11.264 25.6 25.6v670.72c0 14.336-11.264 25.6-25.6 25.6z m-914.944-51.2H962.56v-619.52H73.216v619.52z"/></svg>
     </button>
   </nav>

@@ -8,14 +8,14 @@ import { ref, computed } from 'vue'
  * 4.9.2 5 个工具按钮：刷新 / 置顶 / 静音 / 转接 / 更多
  * 4.9.3 工具按钮 icon 保留现有 emoji（决策 11）
  * 4.9.4 tooltip 用原生 title 属性
- * 4.9.5 agent-mode 三态 human / assist / auto 循环切换
+ * 4.9.5 agent-mode 两态 human / assist 循环切换
  * 4.9.6 agent-mode 默认值 human
  * 4.9.7 agent-mode emit mode-change 给 ChatMain
  */
 const props = defineProps({
   mode: {
     type: String,
-    default: 'human' // human | assist | auto
+    default: 'human' // human | assist（托管已下线）
   }
 })
 
@@ -45,17 +45,13 @@ function handleToolClick(key) {
 }
 
 function handleModeClick() {
-  // human → assist → auto → human 循环
-  const next = props.mode === 'human' ? 'assist'
-            : props.mode === 'assist' ? 'auto'
-            : 'human'
+  // human ↔ assist 两态循环。托管（auto）已下线，不再切换。
+  const next = props.mode === 'human' ? 'assist' : 'human'
   emit('mode-change', next)
 }
 
 const modeDisplay = computed(() => {
-  if (props.mode === 'human')  return { label: '人工', color: 'var(--text-2)' }
   if (props.mode === 'assist') return { label: '辅助', color: 'var(--primary)' }
-  if (props.mode === 'auto')   return { label: '托管', color: 'var(--warning)' }
   return { label: '人工', color: 'var(--text-2)' }
 })
 </script>
@@ -86,7 +82,7 @@ const modeDisplay = computed(() => {
       <span class="chat-head-tools__btn-emoji">{{ t.emoji }}</span>
     </button>
 
-    <!-- agent-mode 三态（决策 4.9.5/6/7 a） -->
+    <!-- agent-mode 两态（决策 4.9.5/6/7 a，托管已下线） -->
     <button
       class="chat-head-tools__mode"
       :class="`chat-head-tools__mode--${mode}`"
@@ -170,7 +166,7 @@ const modeDisplay = computed(() => {
   line-height: 1;
 }
 
-/* agent-mode 三态：human/assist/auto 不同色 */
+/* agent-mode 两态：human/assist 不同色（托管已下线） */
 .chat-head-tools__mode {
   display: flex;
   align-items: center;
@@ -198,22 +194,13 @@ const modeDisplay = computed(() => {
   flex-shrink: 0;
 }
 
-/* 三态：human 默认 / assist primary 脉冲 / auto warning 脉冲 */
+/* 两态：human 默认 / assist primary 脉冲（托管已下线） */
 .chat-head-tools__mode--assist {
   background: var(--primary-soft);
   border-color: var(--primary-glow);
 }
 
 .chat-head-tools__mode--assist .chat-head-tools__mode-dot {
-  animation: chat-head-tools-pulse 1.6s infinite;
-}
-
-.chat-head-tools__mode--auto {
-  background: var(--warning-soft);
-  border-color: var(--warning);
-}
-
-.chat-head-tools__mode--auto .chat-head-tools__mode-dot {
   animation: chat-head-tools-pulse 1.6s infinite;
 }
 

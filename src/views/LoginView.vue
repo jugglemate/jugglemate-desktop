@@ -118,8 +118,8 @@ async function handleLogin() {
             </svg>
           </div>
           <div class="login-feature-card__body">
-            <h3 class="login-feature-card__title">聚合多平台私信，统一管理</h3>
-            <p class="login-feature-card__desc">整合微信、微博、抖音、淘宝等主流平台的客服对话，在一个界面中统一处理，提升工作效率。</p>
+            <h3 class="login-feature-card__title">聚合多渠道私信，统一处理</h3>
+            <p class="login-feature-card__desc">把 Web、Telegram、JuggleChat、WatchApp 等渠道的客服对话收进同一个收件箱，一个界面回复所有消息。</p>
           </div>
         </div>
         <div class="login-feature-card">
@@ -133,18 +133,7 @@ async function handleLogin() {
           </div>
           <div class="login-feature-card__body">
             <h3 class="login-feature-card__title">AI Agent 实时回复建议</h3>
-            <p class="login-feature-card__desc">基于先进 AI 技术，为客服人员提供实时回复建议，确保回复准确性和一致性。</p>
-          </div>
-        </div>
-        <div class="login-feature-card">
-          <div class="login-feature-card__icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <polygon points="12.5,2 5,13 11.5,13 10.5,22 19,10 12.5,10 14,2" fill="#2563EB"/>
-            </svg>
-          </div>
-          <div class="login-feature-card__body">
-            <h3 class="login-feature-card__title">一键接管，自动回复</h3>
-            <p class="login-feature-card__desc">在需要时一键接管对话，AI 助手自动回复常见问题，减轻客服工作压力。</p>
+            <p class="login-feature-card__desc">为每个 Agent 设定角色与话术风格；选中 Agent 后实时给出多条候选回复，点击一键填入输入框。</p>
           </div>
         </div>
       </div>

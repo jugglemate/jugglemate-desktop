@@ -580,7 +580,7 @@ const actionButtons = computed(() => {
         buttons.push({ key: 'resolve', label: '解决', primary: true, action: () => onResolve(t.ticket_id) })
       }
       buttons.push({ key: 'reassign', label: '转派', action: () => onReassign(t.ticket_id) })
-      if (role === 1) {
+      if (role === 2) {
         buttons.push({ key: 'close', label: '关闭', danger: true, action: () => onClose(t.ticket_id) })
       }
       break
@@ -588,7 +588,7 @@ const actionButtons = computed(() => {
       if (isSelf) {
         buttons.push({ key: 'reopen', label: '重新打开', primary: true, action: () => onReopen(t.ticket_id) })
       }
-      if (role === 1) {
+      if (role === 2) {
         buttons.push({ key: 'close', label: '关闭', danger: true, action: () => onClose(t.ticket_id) })
       }
       break

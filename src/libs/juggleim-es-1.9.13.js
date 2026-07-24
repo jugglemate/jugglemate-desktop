@@ -12350,6 +12350,7 @@ function IO(config) {
     reconnectCount = 100,
     logger
   } = config;
+  console.log('config----------', config);
   if (!utils.isArray(navList)) {
     navList = ['https://nav.fake.com'];
   }
@@ -12503,6 +12504,7 @@ function IO(config) {
       let options = {
         headers: customHeaders
       };
+      console.log('servers--------------', servers);
       Network.detect(servers, (domain, error) => {
         // 如果嗅探失败，返回连接断开，同时清理已缓存的 CMP 地址
         if (error && utils.isEqual(error.status, 200)) {
@@ -12532,10 +12534,12 @@ function IO(config) {
           return;
         }
         currentDomain = domain;
-        domain = domain.replace(/http:\/\/|https:\/\/|file:\/\/|wss:\/\/|ws:\/\//g, '');
+        console.log('currentDomain--------------', currentDomain);
+        domain = domain.replace(/http:\/\/|https:\/\/|file:\/\/|wss:\/\/|ws:\/`\//g, '');
         let {
           ws: protocol
         } = utils.getProtocol(currentDomain);
+        console.log('protocol--------------', protocol, domain);
         let url = `${protocol}//${domain}/im`;
         ws = new JWebSocket$1(url);
         wsPools.push(ws);

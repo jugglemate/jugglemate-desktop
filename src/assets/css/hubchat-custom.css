@@ -2562,7 +2562,7 @@
   color: var(--bg);
 }
 
-.tyn-avatar__platform {
+/* .tyn-avatar__platform {
   position: absolute;
   bottom: -2px;
   right: -2px;
@@ -2570,7 +2570,7 @@
   height: 14px;
   border-radius: 50%;
   border: 2px solid var(--bg);
-}
+} */
 
 .tyn-avatar__platform--douyin {
   background: var(--platform-douyin);

@@ -418,7 +418,7 @@ ALTER TABLE agents
 
 **校验**：
 - 当前 status ∈ {processing, reopened}
-- 校验 assignee_id = current_user_id（或 role=1）
+- 校验 assignee_id = current_user_id（或 role=2）
 - 校验 expected_version
 
 **后端副作用**：
@@ -483,7 +483,7 @@ ALTER TABLE agents
 
 **校验**：
 - 当前 status ∈ {processing, reopened, resolved, closed}（closed 幂等）
-- by=admin 时校验 role=1
+- by=admin 时校验 role=2
 - pending 状态不允许 close
 
 **后端副作用**：

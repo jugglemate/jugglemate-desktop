@@ -20,7 +20,7 @@
  */
 
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
-import { fetchTransferCandidates } from '../services/agent'
+import { fetchTransferCandidates as _fetchTransferCandidates } from '../services/agent'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -29,10 +29,26 @@ const props = defineProps({
   // 当前显示用 short ID（如 #tk_001）
   ticketDisplayId: { type: String, default: '' },
   // 当前处理人显示文本（如 "我"）
-  currentAssigneeName: { type: String, default: '我' }
+  currentAssigneeName: { type: String, default: '我' },
+  // 业务模式：'transfer'（转移） / 'assign'（分配）
+  mode: { type: String, default: 'transfer' },
+  // 候选成员拉取函数，由调用方注入；不传则 fallback 到 inboxmembers（v3 默认行为）。
+  fetchCandidates: { type: Function, default: null },
+  // 可选：直接接收 confirm 后的异步处理函数；
+  // 传了则弹层自己 await + 错误处理；不传则走原 emit('confirm') 行为（向后兼容 ChatMain）
+  onConfirm: { type: Function, default: null },
+  // 差异化文案（不传则按 mode 取默认）
+  titleText: { type: String, default: '' },
+  confirmText: { type: String, default: '' },
+  cancelText: { type: String, default: '取消' },
+  searchPlaceholder: { type: String, default: '搜索成员姓名' },
+  loadingText: { type: String, default: '加载成员中...' },
+  errorText: { type: String, default: '加载成员失败，请稍后重试' },
+  emptyTitleText: { type: String, default: '' },
+  selectedHintPrefix: { type: String, default: '已选择' }
 })
 
-const emit = defineEmits(['confirm', 'cancel'])
+const emit = defineEmits(['confirm', 'cancel', 'confirmed', 'failed'])
 
 const keyword = ref('')
 const selected = ref(null)  // 单选：{user_id, nickname, avatar}
@@ -44,22 +60,31 @@ let abortToken = 0  // 防止过期请求覆盖新数据
 
 async function load() {
   if (!props.ticketId) {
-    // ticket_id 不会为空 —— 如果走到这里说明 ChatMain 漏传，前端排查用。
+    // ticket_id 不会为空 —— 如果走到这里说明调用方漏传，前端排查用。
     console.warn('[TicketTransferDialog] missing ticketId on open')
     return
   }
+  const fetcher = typeof props.fetchCandidates === 'function'
+    ? props.fetchCandidates
+    : _fetchTransferCandidates  // 兜底：调用方没注入时回落到默认实现
   const myToken = ++abortToken
   loading.value = true
   error.value = ''
   members.value = []
   try {
-    const list = await fetchTransferCandidates(props.ticketId)
+    const list = await fetcher(props.ticketId)
     if (myToken !== abortToken) return  // 过期请求丢弃
-    members.value = list
+    members.value = Array.isArray(list) ? list : []
   } catch (e) {
     if (myToken !== abortToken) return
-    console.warn('[TicketTransferDialog] load members failed', { ticketId: props.ticketId, err: e })
-    error.value = '加载成员失败，请稍后重试'
+    // 打印完整错误方便排查（fetchCandidates 调用方注入的可能是同步 throw，
+    // 也可能是 fetch Transfer 函数本身报错；这里尽量保留原始信息）
+    console.error('[TicketTransferDialog] load members failed', {
+      ticketId: props.ticketId,
+      mode: props.mode,
+      err: e
+    })
+    error.value = props.errorText
   } finally {
     if (myToken === abortToken) loading.value = false
   }
@@ -94,16 +119,44 @@ function onPick(m) {
   }
 }
 
-function onConfirm() {
-  if (!selected.value) return
-  // payload: { user_id, nickname, note }
-  // 服务端契约只用 user_id（→ MainView 会用 assignee_id 字段名转给后端）。
-  // nickname / note 用于本地更新，不参与 HTTP body。
-  emit('confirm', {
+const titleDisplay = computed(() => {
+  if (props.titleText) return props.titleText
+  return props.mode === 'assign' ? '分配客服' : '转移工单'
+})
+const confirmDisplay = computed(() => {
+  if (props.confirmText) return props.confirmText
+  return props.mode === 'assign' ? '确认分配' : '确认转移'
+})
+const emptyTitleDisplay = computed(() => {
+  if (props.emptyTitleText) return props.emptyTitleText
+  return props.mode === 'assign' ? '暂无可分配的客服' : '没有可转移的目标'
+})
+
+const submitting = ref(false)
+
+async function onConfirm() {
+  if (!selected.value || submitting.value) return
+  const payload = {
     user_id: selected.value.user_id,
     nickname: selected.value.nickname,
     note: note.value.trim()
-  })
+  }
+  // 优先用注入的 onConfirm 函数（异步、自带错误处理）
+  if (typeof props.onConfirm === 'function') {
+    submitting.value = true
+    try {
+      await props.onConfirm(payload)
+      emit('confirmed', payload)
+    } catch (e) {
+      console.warn('[TicketTransferDialog] onConfirm handler failed', e)
+      emit('failed', { payload, error: e })
+    } finally {
+      submitting.value = false
+    }
+    return
+  }
+  // 否则走原 emit('confirm') 行为（向后兼容 ChatMain）
+  emit('confirm', payload)
 }
 
 function onCancel() {
@@ -143,7 +196,7 @@ function initial(name) {
               <polyline points="15 17 20 12 15 7"></polyline>
               <path d="M4 18v-2a4 4 0 0 1 4-4h12"></path>
             </svg>
-            转移工单
+            {{ titleDisplay }}
           </div>
           <button class="trf__close" aria-label="关闭" @click="onCancel">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
@@ -179,7 +232,7 @@ function initial(name) {
           <input
             v-model="keyword"
             type="text"
-            placeholder="搜索成员姓名"
+            :placeholder="searchPlaceholder"
             autocomplete="off"
           />
         </div>
@@ -196,7 +249,7 @@ function initial(name) {
                 <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
               </svg>
             </div>
-            <div class="trf__empty-title">加载成员中...</div>
+            <div class="trf__empty-title">{{ loadingText }}</div>
           </div>
 
           <!-- error -->
@@ -225,7 +278,7 @@ function initial(name) {
                 <line x1="12" y1="16" x2="12.01" y2="16"></line>
               </svg>
             </div>
-            <div class="trf__empty-title">没有可转移的目标</div>
+            <div class="trf__empty-title">{{ emptyTitleDisplay }}</div>
             <div class="trf__empty-sub">群组内其他成员都已不在此会话</div>
           </div>
 
@@ -292,17 +345,17 @@ function initial(name) {
         <div class="trf__footer">
           <div class="trf__footer-info">
             <span v-if="selected" style="color: var(--primary);">
-              已选择 {{ selected.nickname }}
+{{ selectedHintPrefix }} {{ selected.nickname }}
             </span>
             <span v-else>未选择目标</span>
           </div>
           <div class="trf__footer-actions">
-            <button class="btn btn--outline" @click="onCancel">取消</button>
+            <button class="btn btn--outline" :disabled="submitting" @click="onCancel">{{ cancelText }}</button>
             <button
               class="btn btn--primary"
-              :disabled="!selected"
+              :disabled="!selected || submitting"
               @click="onConfirm"
-            >确认转移</button>
+            >{{ confirmDisplay }}</button>
           </div>
         </div>
 

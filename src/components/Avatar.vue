@@ -47,7 +47,6 @@ function getColorIndex(name = "") {
     <div v-if="!avatar" class="tyn-avatar__inner" :class="[`tyn-peer-color-${getColorIndex(name)}`]">
       {{ formatName(name) }}
     </div>
-    <span v-if="platform" class="tyn-avatar__platform" :class="[`tyn-avatar__platform--${platform}`]"></span>
     <slot></slot>
   </div>
 </template>

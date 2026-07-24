@@ -6,17 +6,43 @@ const SERVER_PATH = {
   USER_LOGIN: buildUrl('/jmate/user/login'),
 
   // Agent APIs
+  // 已激活 Agent 列表（新接口契约）：
+  //   GET /jmate/agentapi/agents/active?page=<n>&pageSize=<n>
+  //   resp.data.items[]: [{
+  //     agentId, agentName, ownerId, ownerName, ownerAvatar,
+  //     primaryModel, status ('active'), riskFlag, createdAt, publishedAt,
+  //     knowledgeCount, toolCount
+  //   }, ...]
+  //   resp.data.{ total, page, pageSize }
+  //   第一页前置系统兜底 Agent (Juggle_Agent)；前端可按 ownerId === 'system'
+  //   过滤。返回 code=0 即成功，HTTP 状态码恒为 200。
+  AGENTS_ACTIVE: buildUrl('/jmate/agentapi/agents/active'),
+  // Agent 流式对话 (SSE)：
+  //   POST /jmate/agentapi/chat/stream
+  //   body: { agentId, userId, message, conversationId?, enableHistoryContext?, traceId?, metadata? }
+  //   resp: text/event-stream，逐条推 { event: 'started'|'token'|'done'|'error', payload: ... }
+  //   结束标记: data: [DONE]
+  //   EventSource 仅 GET，必须 fetch + ReadableStream（见 services/agent.js::streamAgentChat）。
+  CHAT_STREAM: buildUrl('/jmate/agentapi/chat/stream'),
+  // 工单 ↔ Agent 绑定（换绑直接覆盖，无解绑接口）：
+  //   POST /jmate/agentapi/agents/sessions/bind
+  //   body: { sessionId, agentId }
+  //   resp.data: { sessionId, agentId, binded: true }
+  //   错误码：400_INVALID_REQUEST / 404_TICKET_NOT_FOUND / 404_AGENT_NOT_BINDABLE
+  AGENT_BIND_SESSION: buildUrl('/jmate/agentapi/agents/sessions/bind'),
+  // 解绑工单 ↔ Agent（POST）
+  //   body: { sessionId }
+  //   resp.data: { sessionId, agentId: '', binded: false }
+  AGENT_UNBIND_SESSION: buildUrl('/jmate/agentapi/agents/sessions/unbind'),
   AGENT_MYBOTS: buildUrl('/jmate/aibots/mybots'),
-  // Session & Feedback APIs
-  AGENT_SESSION_CREATE: buildUrl('/jmate/aibots/sessions'),
-  AGENT_SESSION_LOOKUP: buildUrl('/jmate/aibots/sessions/lookup'),
-  AGENT_SESSION_DETAIL: (sessionId) => buildUrl(`/jmate/aibots/sessions/${sessionId}`),
-  AGENT_SESSION_UPDATE_AGENT: (sessionId) => buildUrl(`/jmate/aibots/sessions/${sessionId}/agent`),
-  AGENT_SESSION_TAKEOVER: (sessionId) => buildUrl(`/jmate/aibots/sessions/${sessionId}/takeover`),
-  AGENT_SESSION_CHAT: (sessionId) => buildUrl(`/jmate/aibots/sessions/${sessionId}/chat`),
-  AGENT_SESSION_FEEDBACK: (sessionId) => buildUrl(`/jmate/aibots/sessions/${sessionId}/feedback`),
 
   // Ticket APIs
+  // 全量工单列表（管理员视图）。字段沿用 customers/tickets 命名：
+  //   GET /jmate/tickets/list?status=<pending|processing|closed|all>&page=<n>&pageSize=<n>
+  //   resp.data.items: [{ ticket_id, source_id, customer_id, customer, inbox_id,
+  //                        channel_type, assignee_id, assignee, status,
+  //                        created_time, updated_time }, ...]
+  //   resp.data: { items, total, page, pageSize }
   TICKET_LIST: buildUrl('/jmate/tickets/list'),
   TICKET_CLAIM: (ticketId) => buildUrl(`/jmate/tickets/${ticketId}/claim`),
   // 工单转移提交：POST /jmate/tickets/:ticketId/transfer
@@ -38,10 +64,10 @@ const SERVER_PATH = {
   //   resp.data.next_start_id: number | null（分页游标，0/null 即无下一页）
   CUSTOMER_TICKETS: buildUrl('/jmate/customers/tickets'),
 
-  // 客户详情：GET /jmate/customers/:id
+  // 客户详情：GET /jmate/customers/ticket_id=<id>
   //   resp.data: { customer_id, nickname, avatar, phone, email, identifier,
   //                channels, first_seen_at, last_seen_at, total_sessions, csat_avg }
-  CUSTOMER_DETAIL: (id) => buildUrl(`/jmate/customers/${id}`)
+  CUSTOMER_DETAIL: (id) => buildUrl(`/jmate/customers/info?ticket_id=${id}`)
 }
 
 async function get(url, params = {}) {

@@ -1,9 +1,10 @@
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import NavSidebar from '../components/NavSidebar.vue'
 import Conversations from '../components/Conversations.vue'
 import ChatMain from '../components/ChatMain.vue'
+import TicketManagementView from '../views/TicketManagementView.vue'
 import AgentPanel from '../components/AgentPanel.vue'
 import UserDrawer from '../components/UserDrawer.vue'
 import AgentCreateSlideover from '../components/AgentCreateSlideover.vue'
@@ -13,8 +14,10 @@ import im from '../common/im'
 import userService from '../services/user'
 import { SERVER_PATH, get, post } from '../services/api'
 import {
-  MSG_NAME, SESSION_FILTER,
-  TICKET_GLOBAL_TAG, PLATFORM, PLATFORM_TAG_ID, PLATFORM_META
+  fetchActiveAgents, mapAgent, bindAgentToTicket, unbindAgentFromTicket, streamAgentChat
+} from '../services/agent'
+import {
+  MSG_NAME, TICKET_GLOBAL_TAG, PLATFORM, PLATFORM_TAG_ID, PLATFORM_META
 } from '../common/enum'
 
 const router = useRouter()
@@ -23,7 +26,7 @@ const juggle = im.getCurrent()
 // Current logged-in user (from localStorage, set by login)
 const currentUser = computed(() => userService.getCurrentUser())
 const currentUserName = computed(() => currentUser.value?.name || '用户')
-// `role` 来自登录接口：1 = 管理员（在用户信息抽屉中显示"管理后台"入口），
+// `role` 来自登录接口：2 = 管理员（在用户信息抽屉中显示"管理后台"入口），
 // 其他值 = 普通坐席。具体业务含义由后端定义。
 const currentUserRole = computed(() => currentUser.value?.role ?? null)
 
@@ -49,6 +52,7 @@ function handleNavChange(nav) {
   if (nav === 'team' || nav === 'data') {
     console.log('[nav]', nav, '暂未实现路由')
   }
+  // tickets：全量工单管理（仅管理员可见入口由 NavSidebar 兜底）
 }
 function handleStatusChange(key) {
   // TODO: 同步到后端 / juggle 当前用户状态
@@ -96,12 +100,17 @@ onMounted(async () => {
   } else if (imConnecting) {
     console.log('[MainView] IM 正在连接中，跳过重复重连')
   }
+
+  // Agent 列表不在启动时拉 —— 等用户点开会话再触发（handleConvoSelect），
+  // 避免一进首页就发请求，节省冷启动时间 + 后端压力。
 })
 
 // Conversation state (in-memory, no routing)
 const currentView = ref('conversation') // 'conversation' | 'group'
 const currentConvoId = ref(null)
 const currentConversation = ref(null)
+// 当前会话在 IM 端的真实 user id（取自 customers/info.source_id）
+const currentPeerSourceId = ref('')
 
 // Conversations 内部维护视图/平台过滤；右侧列表始终是 IM 会话
 // （unassigned 视图通过 exceptTag=assigned 在服务端过滤）。
@@ -119,19 +128,26 @@ const selectedAgentId = ref(null)
 
 // Session state — created/looked-up when conversation is selected,
 // updated when agent is switched, and used for takeover toggle.
-const currentSession = ref(null)  // { session_id, unique_name, agent: {...}, auto_mode, ... }
+const currentSession = ref(null)
+const currentSessionId = computed(() => pickTicketId(currentConversation.value))
 
 // agentMsgBot 建议队列：session_id → [{ content, unique_name, msg_id }]
-const pendingSuggestions = reactive({})
-// 用户点 × 后，整个 tyn-agent-suggestions 关闭（按 session 记），
-// 切换会话/会话重新产生建议时由 computed 自动恢复显示
-const dismissedSuggestions = reactive({})
+// 2026-07-22 重构：流式 AI 回复建议存储。
+// 扁平字典，按 trace_id 一级索引；entry 上挂 sid 用于"当前会话过滤"。
+// 设计要点：
+//   - trace_id 来自 SSE started 事件；started 之前不存在 entry，UI 不显示。
+//   - 多会话并发：每个会话的流各自带独立 trace_id，互不干扰。
+//   - 不自动清理：用户点 × 才删除；切会话/关会话不清。
+//   - 流完成（done/error/abort）后 entry.streaming = false，entry 持续展示。
+// entry 形态：
+//   { traceId, sid, agentId, content, streaming, startedAt }
+const streamSuggestions = reactive({})
 
 const selectedAgent = computed(
   () => agents.find((a) => a.id === selectedAgentId.value) || null
 )
 // 当前会话的 AI 辅助模式：0=不使用, 1=协同模式, 2=托管模式
-const autoMode = computed(() => currentSession.value?.auto_mode ?? 0)
+const autoMode = computed(() => bindedAgentId.value ? 1 : 0)
 // 服务端推送的 session.auto_mode 仍由 ChatMain 读取（控制 head status tip
 // 的 human/assist/auto 三态展示）。本地不再维护 takeoverByConv ——
 // 客户端已无入口去推 auto_mode 到 2，按钮已下线。
@@ -139,91 +155,73 @@ const autoMode = computed(() => currentSession.value?.auto_mode ?? 0)
 const agents = reactive([])
 const agentsLoaded = ref(false)
 
-// dev/test 期间临时 mock AGENT_MYBOTS 的返回值。结构 / 字段 / 头像 url
-// 全部按生产环境真实接口响应造，接真接口时只把下方 await new Promise(...) 那一行
-// 改回 `await get(SERVER_PATH.AGENT_MYBOTS)`，再删掉这个常量即可。
-const __MOCK_AGENTS__ = {
-  code: 0,
-  msg: 'success',
-  data: {
-    items: [
-      {
-        bot_id: 'gcWkNn85ZSS',
-        unique_name: 'gcwknn85zss',
-        nickname: '小柚天气',
-        display_name: '小柚天气',
-        avatar: 'https://snailchat-file.oss-ap-southeast-1.aliyuncs.com/avatars/nwm6fxqt2aeebhb7/1782181828062_eTFkRX847lV.webp',
-        avatar_url: 'https://snailchat-file.oss-ap-southeast-1.aliyuncs.com/avatars/nwm6fxqt2aeebhb7/1782181828062_eTFkRX847lV.webp',
-        greeting: '嗨，我是小天～告诉我你想看哪个城市的天气，我来帮你查。',
-        status: 'trained',
-        active_version: 'v1',
-        suggestions: [
-          '好的，请问您想查询哪个城市的天气？我可以为您实时查询最近 24 小时的天气情况。',
-          '收到～告诉我城市名就行，比如「上海」「北京」，也可以发位置给我。',
-          '目前支持国内 300+ 主要城市，未来会扩展到海外城市，敬请期待。'
-        ]
-      },
-      {
-        bot_id: '5zYkpWbFuhB',
-        unique_name: 'a5zykpwbfuhb',
-        nickname: 'juggle 小问',
-        display_name: 'juggle 小问',
-        avatar: 'https://snailchat-file.oss-ap-southeast-1.aliyuncs.com/avatars/nwm6fxqt2aeebhb7/1781687976720_WTFA1lbv5DR.webp',
-        avatar_url: 'https://snailchat-file.oss-ap-southeast-1.aliyuncs.com/avatars/nwm6fxqt2aeebhb7/1781687976720_WTFA1lbv5DR.webp',
-        greeting: '欢迎使用 juggleIM',
-        status: 'trained',
-        active_version: 'v1',
-        suggestions: [
-          '您好，我是 juggleIM 智能助手，请问有什么可以帮您？',
-          '请稍等，我这边帮您查一下相关信息。',
-          '如果您愿意，可以再详细描述一下遇到的问题，方便我更准确地帮您。'
-        ]
-      },
-      {
-        bot_id: 'Gj4QLs9YFwC',
-        unique_name: 'gj4qls9yfwc',
-        nickname: '小方糖～',
-        display_name: '小方糖～',
-        avatar: 'https://snailchat-file.oss-ap-southeast-1.aliyuncs.com/avatars/nwm6fxqt2aeebhb7/1781601261266_-sNQYI80MwI.webp',
-        avatar_url: 'https://snailchat-file.oss-ap-southeast-1.aliyuncs.com/avatars/nwm6fxqt2aeebhb7/1781601261266_-sNQYI80MwI.webp',
-        greeting: '你好',
-        status: 'trained',
-        active_version: 'v1',
-        suggestions: [
-          '嗨～我是小方糖，有什么可以帮到你的吗？',
-          '在的呢，告诉我你遇到的问题，我陪你一起看看～',
-          '已收到你发的内容啦，让我帮你想想办法 (◕‿◕)'
-        ]
-      }
-    ],
-    offset: '675NdFjkx'
-  }
-}
-
-async function loadAgents() {
-  if (agentsLoaded.value) return
+// 数据源：`GET /jmate/agentapi/agents/active`（新接口契约，2026-07-20 接入）。
+// 旧接口 `GET /jmate/aibots/mybots` 不再使用 —— 字段名 / 结构完全不同，
+// 且新接口不再返 suggestions[]。建议来源改为后端实时推送（agent_msg_id
+// 路径已被废弃。AI 回复建议的当前来源是 streamAgentChat 流式响应，
+// 见 handleAgentAssistSuggestion / streamSuggestions。
+//
+// 分页：pageSize 默认 20（接口允许 1~100）。当前实现只拉第 1 页，total
+// 超过 pageSize 时由后续"加载更多"按钮触发翻页（暂未实现，留个 hook）。
+// 2026-07-20 更新：
+//   - 接收当前会话对象，提取 ticket_id（即接口里的 session_id）传给
+//     /agents/active，列表项会回带 binded 用于回显当前选中。
+//   - 不再 agentsLoaded 短路：切到不同会话时必须重拉（binded 状态是 per-ticket 的）。
+//   - 重拉前先清空旧数组，避免旧会话的 binded 状态短暂闪烁到新会话上。
+async function loadAgents(convo) {
+  const conv = convo || currentConversation.value
+  const sessionId = pickTicketId(conv)
   try {
-    // TODO(接入): 走真接口时把这一行改回 `const res = await get(SERVER_PATH.AGENT_MYBOTS)`
-    const res = await new Promise((resolve) => setTimeout(() => resolve(__MOCK_AGENTS__), 50))
-    if (res?.code === 0 && Array.isArray(res.data?.items)) {
-     const list = res.data.items
-      //  .filter(item => item.status === 'trained' && item.active_version)
-       .filter(item => item.status)
-       .map((item) => ({
-      id: item.bot_id,
-      unique_name: item.unique_name,
-      name: item.display_name,
-      role: item.greeting || '',     
-      emoji: item.avatar_url || '🤖',  
-      suggestions: item.suggestions || []  
-    }))
-    agents.push(...list)
+    // hideSystemAgent 设为 false —— Juggle_Agent 是接口设计里的"系统兜底"，
+    // 当前没有自己的 Agent 时它就是默认可选项，必须展示给用户。AgentPanel
+    // 列表项上会通过 mapAgent 透传的 `isSystem: true` 加一个「系统」徽标。
+    const { items } = await fetchActiveAgents({
+      page: 1, pageSize: 20, hideSystemAgent: false, sessionId
+    })
+    if (!Array.isArray(items) || items.length === 0) {
+      agents.splice(0, agents.length)   // 切换会话时清空旧列表
       agentsLoaded.value = true
+      return
     }
+    const list = items.map(mapAgent).filter(Boolean)
+    agents.splice(0, agents.length)
+    agents.push(...list)
+    agentsLoaded.value = true
   } catch (e) {
     console.warn('[MainView] fetch agents failed', e)
   }
 }
+
+// 工单的 ticket_id 在不同来源下字段名不同。session_id 参数要求 ticket_ 开头，
+// 所以这里要的是"工单 ID"，不是 IM conversationId。
+//   - currentConversation.value.ticket_id   列表项已 map 出来的工单 ID
+//   - currentConversation.value._raw?.ticketId
+//   - currentConversation.value.conversationId  兜底（私聊时 conversationId == ticket_id）
+function pickTicketId(conv) {
+  if (!conv) return null
+  return conv.ticket_id || conv?._raw?.ticketId || conv.conversationId || conv.id || null
+}
+
+// 当前会话"已绑定"的 Agent。列表里 binded===true 最多 1 项（接口契约）。
+// 这也是 AgentPanel 卡片选中态的唯一来源：bindedAgentId 变化 → selectedAgentId 跟着变。
+const bindedAgentId = computed(
+  () => agents.find((a) => a && a.binded)?.id || null
+)
+
+// 让 selectedAgentId 跟着"服务端绑定"走。bindedAgentId 是 ground truth，
+// selectedAgentId 仍然承担"UI 内部选中态"的角色（依赖它的 selectedAgent
+// 计算属性在 ChatMain 里用作模式文案/header 状态）。这样旧的 selectedAgent
+// 派生链不破，回显和切换都只跟 bindedAgentId 对齐。
+//   - bindedAgentId 有值 → 同步到 selectedAgentId（回显/换绑后）
+//   - bindedAgentId 为 null 且 selectedAgentId 不是当前会话绑定的 → 清空
+//     （切换到没有任何绑定 agent 的会话时）
+watch(bindedAgentId, (next) => {
+  if (next) {
+    selectedAgentId.value = next
+  } else if (selectedAgentId.value) {
+    selectedAgentId.value = null
+  }
+})
 
 const showCreateAgent = ref(false)
 const showLogoutModal = ref(false)
@@ -325,44 +323,21 @@ const currentMessages = computed(() => {
   return currentConversation.value?.messages || []
 })
 
-const currentSuggestions = computed(() => {
-  // if (currentView.value === 'group') return []
-  // 用户主动关掉过 → 本次会话内不再展示
-  const sidForDismiss = currentSession.value?.session_id
-  if (sidForDismiss && dismissedSuggestions[sidForDismiss]) return []
-
-  const result = []
-
-  // 模板建议（选中 agent 时）
-  if (selectedAgent.value) {
-    const first = selectedAgent.value.suggestions?.[0]
-    if (first) {
-      result.push({ agent: selectedAgent.value.name, text: first })
-    }
-  }
-
-  // agentMsgBot 实时建议
-  const sid = currentSession.value?.session_id
-  if (sid && pendingSuggestions[sid]) {
-    for (const s of pendingSuggestions[sid]) {
-      const ag = agents.find(a => a.unique_name === s.unique_name)
-      result.push({
-        agent: ag?.name || s.unique_name,
-        text: s.content,
-        msg_id: s.msg_id
-      })
-    }
-  }
-
-  return result
+// 当前会话的流式建议列表（按 trace_id 顺序）。
+const currentSessionStreamSuggestions = computed(() => {
+  console.log('[MainView] currentSessionStreamSuggestions ------------currentSessionId.value', currentSessionId.value)
+  const sid = currentSessionId.value
+  if (!sid) return []
+  console.log('[MainView] currentSessionStreamSuggestions ------------222222')
+  // 遍历 reactive dict 时 Object.values 会触发 reactive getter
+  // → computed 自动追踪每个 entry.content / streaming 变化。
+  const entries = Object.values(streamSuggestions)
+    .filter((entry) => entry && entry.sid === sid)
+    .sort((a, b) => (a.startedAt || 0) - (b.startedAt || 0))
+  console.log('[MainView] currentSessionStreamSuggestions ------------entries', entries)
+  return entries
 })
 
-// 当前会话的待处理 agent 建议
-const currentPendingSuggestions = computed(() => {
-  if (!currentSession.value?.session_id) return []
-  const sid = currentSession.value.session_id
-  return pendingSuggestions[sid] || []
-})
 
 // Handlers
 function handleLogout() {
@@ -389,9 +364,7 @@ function handleConvoSelect(convo) {
   currentView.value = 'conversation'
   currentConvoId.value = convo.id
   currentConversation.value = convo
-  currentSession.value = null  // reset — will be populated by lookup below
-  // Step 1: 点击会话 → 查询 session 是否存在，回显 agent 状态
-  loadAgents().then(() => lookupOrCreateSession(convo))
+  loadAgents(convo)
 }
 
 // 认领成功后：让 IM 会话列表重新拉一次（认领会改 IM 的 my_ticket /
@@ -403,87 +376,115 @@ function refreshAfterClaim() {
   }
   return Promise.resolve()
 }
+// ============================================================================
+// 流式 AI 回复建议（2026-07-22 重构）
+// ============================================================================
+// 触发链：ChatMain 收客户消息 → emit('requestAgentSuggestion') → 下面的
+// handleAgentAssistSuggestion → streamAgentChat → 按 SSE 事件更新
+// streamSuggestions[traceId] → currentSessionStreamSuggestions computed 过滤
+// 当前会话 → ChatMain 通过 :stream-suggestions prop 渲染。
+//
+// 关键约束：
+//   - trace_id 是流的标识符，started 事件首次带回，前端用 trace_id 作为
+//     streamSuggestions 的 key；started 之前不存在 entry。
+//   - 多会话并发：每个流各自带独立 trace_id，互不干扰。
+//   - 不自动清理：用户点 × 才删除（handleClearStreamSuggestion）。
+// ============================================================================
 
-
-function handleSuggestionReceived({ session_id, unique_name, content, msg_id }) {
-  console.log('[MainView] suggestionReceived:', session_id, unique_name, content)
-  // 存入建议队列
-  if (!pendingSuggestions[session_id]) {
-    pendingSuggestions[session_id] = []
+async function handleAgentAssistSuggestion({ agentId, customerMessage }) {
+  const sid = currentSessionId.value
+  const userId = currentUser.value?.id
+  if (!sid) {
+    console.warn('[MainView] handleAgentAssistSuggestion: no currentSessionId, skip')
+    return
   }
-  pendingSuggestions[session_id].push({ content, unique_name, msg_id })
-}
-
-// 获取当前会话的待处理建议，并标记为已处理（调用后清除）
-function popPendingSuggestions(sessionId) {
-  const list = pendingSuggestions[sessionId]
-  if (list && list.length > 0) {
-    const copy = [...list]
-    delete pendingSuggestions[sessionId]
-    return copy
+  if (!agentId || !userId || !customerMessage) {
+    console.warn('[MainView] handleAgentAssistSuggestion: missing fields', { agentId, userId, hasMsg: !!customerMessage })
+    return
   }
-  return []
-}
-
-function handleClearSuggestion(msgId) {
-  // 按 msg_id 从当前会话的 pending 队列中移除
-  const sid = currentSession.value?.session_id
-  if (!sid || !pendingSuggestions[sid]) return
-  pendingSuggestions[sid] = pendingSuggestions[sid].filter(s => s.msg_id !== msgId)
-  if (pendingSuggestions[sid].length === 0) {
-    delete pendingSuggestions[sid]
-  }
-}
-
-function handleDismissSuggestions() {
-  console.log('[MainView] handleDismissSuggestions')
-  // 用户点 × 关闭整组 AI 建议：
-  //   1) 清掉当前会话的实时建议（pendingSuggestions[sid]）
-  //   2) 标记 dismissedSuggestions[sid] = true，挡住模板建议的展示
-  //   模板建议会在重新选择 agent / 切换会话 / 后端新推送时被自然覆盖
-  const sid = currentSession.value?.session_id
-  if (!sid) return
-  if (pendingSuggestions[sid]) delete pendingSuggestions[sid]
-  dismissedSuggestions[sid] = true
-}
-
-async function lookupOrCreateSession(convo) {
-  const convId = convo.conversationId || convo.id
-  if (!convId) return
-  const convType = String(convo.conversationType || '')
-  const sessionId = convId + '_' + convType
+  // 不预 push 占位：started 之前不存在 entry，UI 不显示；
+  // started 拿到 trace_id 后再创建 entry，token / done 按 trace_id 找 entry。
   try {
-    const res = await get(SERVER_PATH.AGENT_SESSION_LOOKUP, { session_id: sessionId })
-    if (res?.code === 0 && res.data) {
-      // 已存在 → 回显 agent 状态
-      currentSession.value = res.data
-      // 如果 session 绑定了 agent，同步 selectedAgentId 和 托管状态
-      if (res.data.agent && res.data.agent.unique_name) {
-        const ag = agents.find(a => a.unique_name === res.data.agent.unique_name)
-        if (ag) {
-          selectedAgentId.value = ag.id
+    await streamAgentChat({
+      agentId,
+      userId,
+      message: customerMessage,
+      onEvent: (ev) => {
+        if (!ev) return
+        if (ev.event === 'started') {
+          const traceId = ev.trace_id || ev.traceId
+          if (!traceId) return
+          if (streamSuggestions[traceId]) return  // 重复 started 幂等
+          streamSuggestions[traceId] = {
+            traceId,
+            sid,
+            agentId,
+            content: '',
+            streaming: true,
+            startedAt: Date.now()
+          }
+        } else if (ev.event === 'token') {
+          const traceId = ev.trace_id || ev.traceId
+          const entry = traceId && streamSuggestions[traceId]
+          if (!entry) return
+          if (ev.payload?.token) entry.content += ev.payload.token
+        } else if (ev.event === 'done') {
+          const traceId = ev.trace_id || ev.traceId
+          const entry = traceId && streamSuggestions[traceId]
+          if (!entry) return
+          if (ev.payload?.answer) entry.content = ev.payload.answer
+          entry.streaming = false
+        } else if (ev.event === 'error') {
+          const traceId = ev.trace_id || ev.traceId
+          const entry = traceId && streamSuggestions[traceId]
+          if (entry) entry.streaming = false
         }
       }
-      // 服务端下推的 auto_mode === 2 由 ChatMain 通过 :auto-mode prop 读取；
-      // 本地不再维护 takeoverByConv —— 客户端已无入口推 auto_mode 到 2。
-    } else if (res?.code === 0 && agents.length > 0) {
-      // 不存在 → 用第一个 agent 立即创建 session
-      const firstAg = agents[0]
-      const createRes = await post(SERVER_PATH.AGENT_SESSION_CREATE, {
-        conv_id: convId,
-        conv_type: String(convo.conversationType || ''),
-        unique_name: firstAg.unique_name,
-        customer_id: convo.customerId || convo.userid || '',
-        platform: convo.platform || 'jim',
-        auto_mode: 0
-      })
-      if (createRes?.code === 0 && createRes.data) {
-        currentSession.value = createRes.data
-        selectedAgentId.value = firstAg.id
-      }
+    })
+    // 流结束兜底：把 sid 匹配的所有 streaming entry 关掉
+    for (const entry of Object.values(streamSuggestions)) {
+      if (entry && entry.streaming && entry.sid === sid) entry.streaming = false
     }
   } catch (e) {
-    console.warn('[MainView] lookup session failed', e)
+    if (e?.code === 'aborted') {
+      console.log('[MainView] streamAgentChat aborted')
+    } else {
+      console.warn('[MainView] streamAgentChat failed', e)
+    }
+    for (const entry of Object.values(streamSuggestions)) {
+      if (entry && entry.streaming && entry.sid === sid) entry.streaming = false
+    }
+  }
+}
+
+// 用户点 ×：按 trace_id 删除一条流式建议。
+function handleClearStreamSuggestion(traceId) {
+  if (!traceId) return
+  delete streamSuggestions[traceId]
+}
+
+// 用户点 header ×：清掉当前会话的全部流式建议（按 sid 过滤）。
+function handleClearAllStreamSuggestions() {
+  const sid = currentSessionId.value
+  if (!sid) {
+    // 没有当前会话就整体清空，保留兜底。
+    for (const k of Object.keys(streamSuggestions)) delete streamSuggestions[k]
+    return
+  }
+  for (const [k, v] of Object.entries(streamSuggestions)) {
+    if (v && v.sid === sid) delete streamSuggestions[k]
+  }
+}
+
+// ChatMain 收到新消息时调：按当前 filter 重拉会话列表。
+//   防御 conversationsRef 未挂载 / refresh 缺失，做静默 no-op。
+async function handleConversationChanged() {
+  if (conversationsRef.value && typeof conversationsRef.value.refresh === 'function') {
+    try {
+      await conversationsRef.value.refresh()
+    } catch (e) {
+      console.warn('[MainView] conversations refresh failed', e)
+    }
   }
 }
 
@@ -608,11 +609,6 @@ async function handleClaimTicket(ticketId) {
         // 指向最新的 wrapper，让 ChatMain 立即看到新 tags / status。
         currentConversation.value = refreshed
       }
-    }
-
-    // 4. 给这个会话建立/查找一个 agent session，让大模型建议链路跟上
-    if (conv) {
-      await lookupOrCreateSession(conv)
     }
 
     // toast.success('工单已分配给您')
@@ -747,11 +743,31 @@ function handleDeselectAgent() {
 }
 
 async function handleSelectAgent(id) {
-  // 列表行点击 = 切换当前会话的写作 agent（仅改 unique_name + selectedAgentId），
-  // **不**动 mode。mode 改由专门的"托管 / 取消托管"按钮触发。
-  // 当前会话已托管给 agent X，再点列表里 agent Y：
-  //   - Y !== X：切 agent 风格，但接管保持（hosted 行变 Y）
-  //   - Y === X：保持
+  // 2026-07-20 切换为新接口契约：
+  //   1) POST /jmate/agentapi/agents/sessions/bind（换绑直接覆盖）
+  //   2) 重拉 /agents/active?session_id=... 刷新 binded 状态
+  //   3) bindedAgentId 派生回写 selectedAgentId（见 watcher），UI 自动同步选中态
+  // 旧逻辑里"创建 / 更新 session"步骤已不再需要 —— bind 是 ground truth。
+  // 2026-07-21：点已选中项 = 取消选中 → bind agentId='' 让后端解绑。
+  const conv = currentConversation.value
+  if (!conv) return
+  const sessionId = pickTicketId(conv)
+  if (!sessionId) return
+
+  // 取消选中分支：当前已是选中态，再点同一项就是 toggle off
+  if (id !== null && id === selectedAgentId.value) {
+    const prev = selectedAgentId.value
+    selectedAgentId.value = null
+    try {
+      await unbindAgentFromTicket(sessionId)
+      await loadAgents(conv)
+    } catch (e) {
+      console.warn('[MainView] unbind agent failed', e)
+      selectedAgentId.value = prev
+    }
+    return
+  }
+
   if (id === null) {
     selectedAgentId.value = null
     return
@@ -759,42 +775,40 @@ async function handleSelectAgent(id) {
 
   const ag = agents.find(a => a.id === id)
   if (!ag) return
-  const conv = currentConversation.value
-  if (!conv) return
-  const convId = conv.conversationId || conv.id
-  if (!convId) return
 
+  // 乐观更新：先本地把 selectedAgentId 切过去，避免卡片点击后视觉延迟。
+  // 失败时回滚（bind 接口错误码透传）。
+  const prev = selectedAgentId.value
   selectedAgentId.value = id
 
-  if (currentSession.value?.session_id) {
-    try {
-      const res = await post(SERVER_PATH.AGENT_SESSION_UPDATE_AGENT(currentSession.value.session_id), {
-        unique_name: ag.unique_name
-      })
-      if (res?.code === 0 && res.data) {
-        currentSession.value = res.data
-      }
-    } catch (e) {
-      console.warn('[MainView] update session agent failed', e)
-    }
-  } else {
-    // Session 不存在 → 创建（mode 默认 0 人工，由"托管"按钮或后续交互推）
-    try {
-      const res = await post(SERVER_PATH.AGENT_SESSION_CREATE, {
-        conv_id: convId,
-        conv_type: String(conv.conversationType || ''),
-        unique_name: ag.unique_name,
-        customer_id: conv.customerId || conv.userid || '',
-        platform: conv.platform || 'jim',
-        auto_mode: 0
-      })
-      if (res?.code === 0 && res.data) {
-        currentSession.value = res.data
-      }
-    } catch (e) {
-      console.warn('[MainView] create session failed', e)
-    }
+  try {
+    await bindAgentToTicket(sessionId, ag.id)
+    // 重拉让 binded 与服务端对齐 —— bindedAgentId watcher 会再 sync 一次
+    await loadAgents(conv)
+  } catch (e) {
+    console.warn('[MainView] bind agent failed', e)
+    selectedAgentId.value = prev
   }
+}
+
+// customers/info 拉回最新数据后 → 用 detail.source_id 作为 IM peer userId
+// 去刷在线状态。chat 会话 id 不等于 IM 端的 user id，必须走 source_id。
+// 刷新后 userStatusCache 用 source_id 作 key；currentPeerSourceId 透给
+// ChatMain 算 peerStatus，二者对齐。
+function onCustomerInfoLoaded(payload) {
+  const detail = payload?.detail
+  if (!detail) return
+  const sourceId = detail.source_id
+  if (!sourceId) {
+    console.warn('[MainView] customer-info-loaded: detail 缺 source_id')
+    return
+  }
+  const sid = String(sourceId)
+  currentPeerSourceId.value = sid
+  im.invalidateUserStatus(sid)
+  im.getUserStatus(sid).catch((e) => {
+    console.warn('[MainView] refresh peer status failed', e)
+  })
 }
 
 
@@ -827,44 +841,53 @@ function handleCreateAgent(data) {
       @status-change="handleStatusChange"
     />
 
+    <!-- 全量工单管理（仅管理员入口） -->
+    <TicketManagementView
+      v-if="activeNav === 'tickets'"
+      @transfer-ticket="handleTransferTicket"
+    />
+
     <!-- 会话面板：二级过滤侧栏 + 会话列表（IM 会话，过滤维度统一在 Conversations 内部） -->
     <Conversations
+      v-if="activeNav !== 'tickets'"
       ref="conversationsRef"
       :active-id="currentView === 'conversation' ? currentConvoId : null"
       @select="handleConvoSelect"
       @conversation-op="handleConversationOp"
-      @suggestion-received="handleSuggestionReceived"
     />
 
     <ChatMain
       ref="chatMainRef"
-      v-if="!hasNoSelection"
+      v-if="!hasNoSelection && activeNav !== 'tickets'"
       :conversation="currentView === 'conversation' ? currentConversation : null"
+      :peer-source-id="currentPeerSourceId"
       :messages="currentMessages"
-      :suggestions="currentSuggestions"
-      @dismiss-suggestions="handleDismissSuggestions"
       :is-group="currentView === 'group'"
       :selected-agent="selectedAgent"
       :auto-mode="autoMode"
-      :pending-suggestions="currentPendingSuggestions"
+      :stream-suggestions="currentSessionStreamSuggestions"
       :assigned="isAssignedConversation"
       @send="handleSend"
       @use-suggestion="handleUseSuggestion"
-      @clear-suggestion="handleClearSuggestion"
+      @clear-stream-suggestion="handleClearStreamSuggestion"
+      @clear-all-stream-suggestions="handleClearAllStreamSuggestions"
+      @conversation-changed="handleConversationChanged"
       @claim-ticket="handleClaimTicket"
       @transfer-ticket="handleTransferTicket"
+      @request-agent-suggestion="handleAgentAssistSuggestion"
     />
 
     <AgentPanel
-      v-if="!hasNoSelection && currentCustomerInfo"
+      v-if="!hasNoSelection && currentCustomerInfo && activeNav !== 'tickets'"
       :customer="currentCustomerInfo"
       :is-assigned="isAssignedConversation"
       :agents="agents"
       :selected-agent-id="selectedAgentId"
       @select-agent="handleSelectAgent"
+      @customer-info-loaded="onCustomerInfoLoaded"
     />
 
-    <main v-if="hasNoSelection" class="jm-empty">
+    <main v-if="hasNoSelection && activeNav !== 'tickets'" class="jm-empty">
       <div class="jm-empty__inner">
         <div class="jm-empty__art" aria-hidden="true">
           <svg viewBox="0 0 120 88" fill="none">

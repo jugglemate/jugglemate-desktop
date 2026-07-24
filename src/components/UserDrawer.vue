@@ -17,7 +17,7 @@ const props = defineProps({
     type: String,
     default: 'user_12345678'
   },
-  // Server-defined role. `1` = admin (sees the "管理后台" entry point).
+  // Server-defined role. `2` = admin (sees the "管理后台" entry point), `1` = 普通用户。
   userRole: {
     type: [Number, String],
     default: null
@@ -26,7 +26,7 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'logout'])
 
-const isAdmin = computed(() => Number(props.userRole) === 1)
+const isAdmin = computed(() => Number(props.userRole) === 2)
 const editableName = ref(props.userName)
 const editableAvatar = ref('')
 watch(() => props.show, (visible) => {

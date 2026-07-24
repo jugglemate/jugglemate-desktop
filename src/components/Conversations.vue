@@ -46,6 +46,7 @@ import {
   VIEW,
   VIEW_META
 } from '../common/enum'
+import { resolvePlatformMeta } from '../common/platform-utils'
 import ConversationMenu from './ConversationMenu.vue'
 import Avatar from './Avatar.vue'
 
@@ -60,7 +61,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['select', 'conversation-op', 'suggestion-received', 'view-change'])
+const emit = defineEmits(['select', 'conversation-op', 'view-change'])
 
 // ---------------------------------------------------------------------------
 // 视图 + 平台 + 工单状态（默认值：我的 + 全部 + 全部）
@@ -260,9 +261,11 @@ function mapConversation(c) {
     unread: c.unreadCount || 0,
     unreadTag: c.unreadTag,
     isTop: !!c.isTop,
-    // juggle.getConversations 返回的 c.platform 是小写字符串（web / telegram / jugglechat）。
-    // 模板里 conv-item__plat-dot 用这个字段决定颜色。
-    platform: (c.platform || '').toLowerCase(),
+    // 平台标识：优先从 tags 找 channel_* 标记（web / telegram / jugglechat /
+    // watchapp），没有 channel tag 时再兜底 c.platform / c.platformKey。
+    // 统一输出成 PLATFORM_TAG_ID.* 的小写字符串，保留原 shape 让
+    // conv-item__plat-icon / tag label / 分桶（filterCounts）继续按字符串判断。
+    platform: resolvePlatformMeta(c)?.key || '',
     tags: c.tags || [],
     // 保留 key 是为了和工单对象 shape 一致。
     isTicket: false,
@@ -876,9 +879,11 @@ defineExpose({
                 size="md"
               />
               <span
-                v-if="convo.platform"
-                class="conv-item__plat-dot"
-                :style="{ background: PLATFORM_META[convo.platform?.toLowerCase?.()]?.color || '#6B7280' }"
+                v-if="resolvePlatformMeta(convo)?.icon"
+                class="conv-item__plat-icon"
+                :style="{ color: resolvePlatformMeta(convo)?.color }"
+                aria-hidden="true"
+                v-html="resolvePlatformMeta(convo)?.icon"
               ></span>
             </div>
             <div class="conv-item__info">
@@ -899,7 +904,7 @@ defineExpose({
                 </span>
               </div>
               <div v-if="convo.platform" class="conv-item__tags">
-                <span class="tag tag-info">{{ PLATFORM_META[convo.platform?.toLowerCase?.()]?.label || convo.platform }}</span>
+                <span class="tag tag-info">{{ resolvePlatformMeta(convo)?.label || convo.platform }}</span>
               </div>
             </div>
           </div>
@@ -1257,14 +1262,25 @@ defineExpose({
   font-weight: 600;
   position: relative;
 }
-.conv-item__plat-dot {
+.conv-item__plat-icon {
   position: absolute;
-  bottom: -1px;
-  right: -1px;
+  bottom: -2px;
+  left: -2px;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border-radius: 50%;
+  /* Icon SVG is sized at 16x16 in PLATFORM_META; shrink to 12x12 so the
+     white circular badge stays 16x16 and reads cleanly against any
+     avatar background. */
+}
+.conv-item__plat-icon :deep(svg) {
+  display: block;
   width: 12px;
   height: 12px;
-  border-radius: 50%;
-  border: 2px solid #fff;
 }
 .conv-item__info {
   flex: 1;

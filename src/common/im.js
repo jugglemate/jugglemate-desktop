@@ -44,6 +44,29 @@ function getCachedUserStatus(userId) {
   return cached.status
 }
 
+/**
+ * 清掉某个用户的在线状态缓存（强制下次 getUserStatus 重新发请求）。
+ * 场景：customers/info 拉回新数据，触发表头 peer status 同步刷新。
+ */
+/**
+ * 软失效：把 cache 项的 expiresAt 置 0（已过期），但保留 status 字段。
+ * 这么做的目的：invalidate 后到 getUserStatus 重新拉取完成之间的窗口期，
+ * userStatusCache.get(userId) 仍能返回旧值，避免 UI（头部 peer status）
+ * 从「在线」闪成「状态未知」再回弹到「在线」。
+ * 配套：getUserStatus 在「软失效」时仍会重新发请求（看 getUserStatus 内部）。
+ */
+function invalidateUserStatus(userId) {
+  if (!userId) return
+  const key = String(userId)
+  const cached = userStatusCache.get(key)
+  if (cached) {
+    cached.expiresAt = 0
+    console.log('[IM][user-status] soft-invalidated', { userId: key, prevStatus: cached.status })
+  } else {
+    console.log('[IM][user-status] invalidate: no cache entry', { userId: key })
+  }
+}
+
 async function getUserStatus(userId) {
   const normalizedUserId = String(userId || '')
   if (!normalizedUserId) return null
@@ -729,6 +752,7 @@ export default {
   init,
   getCurrent,
   getUserStatus,
+  invalidateUserStatus,
   getCachedUserStatus,
   userStatusCache,
   getConversation,
