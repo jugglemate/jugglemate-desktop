@@ -2956,7 +2956,7 @@
   align-items: center;
   justify-content: center;
   background: var(--bg-soft);
-  border-radius: var(--r-lg);
+  /* border-radius: var(--r-lg); */
   overflow: hidden;
 }
 

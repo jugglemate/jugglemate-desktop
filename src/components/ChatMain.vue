@@ -277,6 +277,10 @@ const modeIconSvg = computed(() => {
 
 const isAssignedConversation = computed(() => props.assigned)
 
+// 联系人是普通聊天：没有 ticket、没有 assigned tag、没有 transfer/claim 控件。
+// 通过 _raw.member 识别（MainView 选中联系人时构造的 fake conversation 会带这个字段）。
+const isContactChat = computed(() => !!props.conversation?._raw?.member)
+
 // --- Ticket claim ---
 function onClaimTicket() {
   claiming.value = true
@@ -540,7 +544,7 @@ async function sendText(text) {
 async function onSend(text) {
   // 未认领的工单不允许直接发消息 — 必须先认领。
   // 既挡住发送按钮，也挡住回车键（MessageSender 在 submit 之前会 emit send）。
-  if (!isAssignedConversation.value) {
+  if (!isAssignedConversation.value && !isContactChat.value) {
     if (!text || !text.trim()) {
       showClaimBanner.value = true
     }
@@ -580,14 +584,14 @@ function onComposerInput(value) {
   composerText.value = value
   if (value.trim()) {
     // Don't send typing for unassigned tickets
-    if (!!isAssignedConversation.value) {
+    if (!!isAssignedConversation.value || isContactChat.value) {
       sendStartTyping()
     }
-    if (!isAssignedConversation.value) {
+    if (!isAssignedConversation.value && !isContactChat.value) {
       showClaimBanner.value = true
     }
   } else {
-    if (!!isAssignedConversation.value) {
+    if (!!isAssignedConversation.value || isContactChat.value) {
       sendEndTyping()
     }
     showClaimBanner.value = false
@@ -595,7 +599,7 @@ function onComposerInput(value) {
 }
 
 function onComposerFocus() {
-  if (!!isAssignedConversation.value) {
+  if (!!isAssignedConversation.value || isContactChat.value) {
     sendStartTyping(true)
   }
 }
@@ -1411,7 +1415,7 @@ defineExpose({ notifyTransferResult, openTransfer })
           </div>
         </div>
       </div>
-      <div class="tyn-chat-header__actions" v-if="isAssignedConversation">
+      <div class="tyn-chat-header__actions" v-if="isAssignedConversation && !isContactChat">
         <div
           class="tyn-chat-header__agent-mode"
           :data-mode="currentMode"
@@ -1440,7 +1444,7 @@ defineExpose({ notifyTransferResult, openTransfer })
           </div>
         </div>
       </div>
-      <div class="tyn-chat-header__actions" v-if="!isAssignedConversation">
+      <div class="tyn-chat-header__actions" v-if="!isAssignedConversation && !isContactChat">
         <button
           class="tyn-btn tyn-btn--sm tyn-btn--primary"
           @click="onClaimTicket"
@@ -1594,7 +1598,7 @@ defineExpose({ notifyTransferResult, openTransfer })
     <MessageSender
       :model-value="composerText"
       :placeholder="conversation ? `发送消息给 ${conversation.name || ''}` : '输入消息...'"
-      :send-disabled="!isAssignedConversation"
+      :send-disabled="!isAssignedConversation && !isContactChat"
       @update:model-value="onComposerInput"
       @focus="onComposerFocus"
       @blur="sendEndTyping"

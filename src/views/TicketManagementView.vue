@@ -141,7 +141,7 @@ function openAssign() {
   assignDialog.show = true
   assignDialog.ticketId = t.ticket_id
   assignDialog.displayId = String(t.ticket_id).replace(/^ticket_/, '') || t.ticket_id
-  assignDialog.currentAssigneeName = t.assignee?.name || '未分配'
+  assignDialog.currentAssigneeName = t.assignee?.nickname || t.assignee?.name || '未分配'
 }
 
 function onAssignConfirm(picked) {
@@ -163,6 +163,24 @@ function onAssignCancel() {
 }
 
 const totalPages = computed(() => Math.max(1, Math.ceil(list.total / list.pageSize)))
+
+// 页码折叠：超过 7 页时折叠中间，仅显示首/末页 + 当前页 ±1 + 省略号
+// 用 '…' 字符串占位让模板容易渲染
+const PAGE_GAP = '…'
+const pageNumbers = computed(() => {
+  const total = totalPages.value
+  const cur = list.page
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1)
+  const set = new Set([1, total, cur - 1, cur, cur + 1])
+  const sorted = [...set].filter((n) => n >= 1 && n <= total).sort((a, b) => a - b)
+  const out = []
+  for (let i = 0; i < sorted.length; i++) {
+    const n = sorted[i]
+    if (i > 0 && n - sorted[i - 1] > 1) out.push(PAGE_GAP)
+    out.push(n)
+  }
+  return out
+})
 const startIndex = computed(() => (list.page - 1) * list.pageSize)
 
 // 时间格式化（created_time/updated_time 是 unix ms 数字）：YYYY-MM-DD HH:mm
@@ -185,15 +203,17 @@ async function loadTickets() {
   loading.value = true
   listError.value = ''
   try {
-    const params = { page: list.page, pageSize: list.pageSize }
+    // 服务端分页参数：limit / offset。前端用 page / pageSize 表达，
+    // 请求时换算成 offset，响应里 limit 反推回 pageSize。
+    const params = { limit: list.pageSize, offset: (list.page - 1) * list.pageSize }
     if (activeStatus.value !== 'all') params.status = Number(activeStatus.value)
     const res = await get(SERVER_PATH.TICKET_LIST, params)
     if (res?.code === 0) {
       const data = res.data || {}
       list.items = Array.isArray(data.items) ? data.items : []
       list.total = Number(data.total || 0)
-      list.page = Number(data.page || list.page)
-      list.pageSize = Number(data.pageSize || list.pageSize)
+      if (Number.isFinite(data.limit) && data.limit > 0) list.pageSize = Number(data.limit)
+      // offset 已经表达了当前是第几页，这里不需要再回填 list.page
       // 不默认选中第一条：用户需主动点击才进入预览
     } else {
       listError.value = res?.msg || '加载工单失败'
@@ -347,7 +367,7 @@ function onTimelineScroll(e) {
 
 watch(selectedTicketId, (id) => {
   if (id) {
-    assigneeDraft.value = selectedTicket.value?.assignee?.name || ''
+  assigneeDraft.value = selectedTicket.value?.assignee?.nickname || selectedTicket.value?.assignee?.name || ''
     isHistoryFinished.value = false
     loadMessages(id)
     // 默认展示预览（用户点行 = 主动打开预览）
@@ -366,7 +386,7 @@ function openTransfer() {
   transferDialog.show = true
   transferDialog.ticketId = t.ticket_id
   transferDialog.displayId = String(t.ticket_id).replace(/^ticket_/, '') || t.ticket_id
-  transferDialog.currentAssigneeName = t.assignee?.name || '未分配'
+  transferDialog.currentAssigneeName = t.assignee?.nickname || t.assignee?.name || '未分配'
 }
 
 async function onTransferConfirm(picked) {
@@ -452,19 +472,20 @@ defineExpose({ reload: loadTickets })
               <th class="tmv__col-center">渠道</th>
               <th>受理人</th>
               <th>状态</th>
+              <th>接待方式</th>
               <th>创建时间</th>
               <th>更新时间</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="loading">
-              <td colspan="6" class="tmv__placeholder">加载中...</td>
+              <td colspan="7" class="tmv__placeholder">加载中...</td>
             </tr>
             <tr v-else-if="listError">
-              <td colspan="6" class="tmv__placeholder tmv__placeholder--error">{{ listError }}</td>
+              <td colspan="7" class="tmv__placeholder tmv__placeholder--error">{{ listError }}</td>
             </tr>
             <tr v-else-if="filteredItems.length === 0">
-              <td colspan="6" class="tmv__placeholder">暂无工单</td>
+              <td colspan="7" class="tmv__placeholder">暂无工单</td>
             </tr>
             <tr
               v-for="t in filteredItems"
@@ -496,13 +517,17 @@ defineExpose({ reload: loadTickets })
                 ></span>
               </td>
               <td>
-                <span v-if="t.assignee?.name">{{ t.assignee.name }}</span>
+                <span v-if="t.assignee?.nickname || t.assignee?.name">{{ t.assignee.nickname || t.assignee.name }}</span>
                 <span v-else class="tmv__muted">未分配</span>
               </td>
               <td>
                 <span class="tmv__pill" :class="`tmv__pill--${STATUS_TONE[t.status] || 'closed'}`">
                   {{ STATUS_LABEL[t.status] || t.status || '-' }}
                 </span>
+              </td>
+              <td>
+                <span v-if="t.is_human_taken_over" class="tmv__muted">人工</span>
+                <span v-else class="tmv__muted">Agent</span>
               </td>
               <td class="tmv__muted">{{ fmtDateTime(t.created_time) }}</td>
               <td class="tmv__muted">{{ fmtDateTime(t.updated_time) }}</td>
@@ -513,19 +538,21 @@ defineExpose({ reload: loadTickets })
 
       <footer class="tmv__pager">
         <div class="tmv__pager-info">
-          共 {{ list.total }} 条 · {{ list.pageSize }} 条/页
+          共 {{ list.total }} 条 · 第 {{ startIndex + 1 }}-{{ Math.min(startIndex + list.pageSize, list.total) }} 条 · {{ list.pageSize }} 条/页
         </div>
         <div class="tmv__pager-buttons">
           <button class="tmv__page-btn" :disabled="list.page <= 1" @click="gotoPage(list.page - 1)">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
-          <button
-            v-for="p in totalPages"
-            :key="p"
-            class="tmv__page-btn"
-            :class="{ 'tmv__page-btn--active': p === list.page }"
-            @click="gotoPage(p)"
-          >{{ p }}</button>
+          <template v-for="(p, i) in pageNumbers" :key="`${p}-${i}`">
+            <span v-if="p === '…'" class="tmv__page-gap">…</span>
+            <button
+              v-else
+              class="tmv__page-btn"
+              :class="{ 'tmv__page-btn--active': p === list.page }"
+              @click="gotoPage(p)"
+            >{{ p }}</button>
+          </template>
           <button class="tmv__page-btn" :disabled="list.page >= totalPages" @click="gotoPage(list.page + 1)">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
@@ -615,8 +642,15 @@ defineExpose({ reload: loadTickets })
             <div class="info-row">
               <span class="info-value">处理人</span>
               <span class="info-value">
-                <span v-if="selectedTicket.assignee?.name">{{ selectedTicket.assignee.name }}</span>
+                <span v-if="selectedTicket.assignee?.nickname || selectedTicket.assignee?.name">{{ selectedTicket.assignee.nickname || selectedTicket.assignee.name }}</span>
                 <span v-else class="tmv__muted">未分配</span>
+              </span>
+            </div>
+            <div class="info-row">
+              <span class="info-value">转人工</span>
+              <span class="info-value">
+                <span v-if="selectedTicket.is_human_taken_over" class="tmv__human-pill">已转人工</span>
+                <span v-else class="tmv__muted">未转人工</span>
               </span>
             </div>
             <div class="info-row">
@@ -996,6 +1030,17 @@ defineExpose({ reload: loadTickets })
   font-weight: 700;
 }
 
+.tmv__page-gap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 32px;
+  font-size: 12px;
+  color: var(--text-3, #94a3b8);
+  user-select: none;
+}
+
 /* === 详情 === */
 .tmv__detail {
   width: 360px;
@@ -1128,6 +1173,23 @@ defineExpose({ reload: loadTickets })
   gap: 6px;
   flex: 1;
   min-width: 0;
+}
+.tmv__status-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.tmv__human-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #eaf8f1;
+  color: #087443;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 .tmv__chip {
   padding: 2px 10px;

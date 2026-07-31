@@ -96,6 +96,7 @@ async function handleLogin() {
 
 <template>
   <div class="login-page">
+    <div class="login-page__drag-region" aria-hidden="true"></div>
     <!-- Left: Brand Panel -->
     <aside class="login-page__aside">
       <div class="login-page__brand">

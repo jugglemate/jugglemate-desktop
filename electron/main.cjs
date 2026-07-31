@@ -135,12 +135,11 @@ function createSplashWindow() {
     height: 420,
     frame: false,
     transparent: false,
-    backgroundColor: '#0F172A',
     resizable: false,
     movable: false,
     minimizable: false,
     maximizable: false,
-    closable: false,
+    closable: true,
     skipTaskbar: true,
     alwaysOnTop: false,
     center: true,
@@ -180,19 +179,21 @@ async function createWindow() {
     }
   })
 
-  // 主窗口首次绘制完成后关闭 splash 并显示主窗
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show()
+  // 关闭 splash 并显示主窗的统一入口
+  let splashDismissed = false
+  function dismissSplash() {
+    if (splashDismissed) return
+    splashDismissed = true
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.show()
     if (splashWindow && !splashWindow.isDestroyed()) {
-      splashWindow.close()
+      splashWindow.destroy()
     }
-  })
-  // 兜底：超过 8 秒无论主窗口是否就绪都强制关闭 splash，避免卡死
-  setTimeout(() => {
-    if (splashWindow && !splashWindow.isDestroyed()) {
-      splashWindow.close()
-    }
-  }, 8000)
+  }
+  mainWindow.once('ready-to-show', dismissSplash)
+  mainWindow.webContents.once('did-finish-load', dismissSplash)
+  mainWindow.once('show', dismissSplash)
+  // 兜底：3 秒无论如何都关掉 splash，避免卡死
+  setTimeout(dismissSplash, 3000)
   // 开发模式每次启动清缓存，避免旧页面残留。但保留 localStorage 以免登录态丢失。
   const { session } = require('electron')
   session.defaultSession.clearStorageData({ storages: ['cookies', 'indexdb', 'serviceworkers', 'cachestorage'] })
@@ -239,7 +240,12 @@ async function createWindow() {
   })
 }
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  if (process.platform === 'darwin') {
+    app.dock.setIcon(path.join(__dirname, '../build/icon.png'))
+  }
+  return createWindow()
+})
 
 app.on('window-all-closed', () => {
   if (rendererServer) {

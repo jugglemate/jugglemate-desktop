@@ -2,8 +2,8 @@ import Storage from './common/storage'
 import { STORAGE } from './common/enum'
 
 // Default API base URL (used when no custom override is set)
-// const DEFAULT_API_BASE_URL = 'localhost:8050'
-const FALLBACK_API_BASE_URL = '47.94.96.179:8050'
+const FALLBACK_API_BASE_URL = 'localhost:8050'
+// const FALLBACK_API_BASE_URL = '47.94.96.179:8050'
 
 // IM WebSocket server list. The JuggleIM SDK will try each entry in order
 // when establishing a connection. Add more entries here for failover.

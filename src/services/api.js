@@ -67,7 +67,45 @@ const SERVER_PATH = {
   // 客户详情：GET /jmate/customers/ticket_id=<id>
   //   resp.data: { customer_id, nickname, avatar, phone, email, identifier,
   //                channels, first_seen_at, last_seen_at, total_sessions, csat_avg }
-  CUSTOMER_DETAIL: (id) => buildUrl(`/jmate/customers/info?ticket_id=${id}`)
+  CUSTOMER_DETAIL: (id) => buildUrl(`/jmate/customers/info?ticket_id=${id}`),
+
+  // Console stats APIs（管理员视图，需 role=2）。
+  // 三个接口都挂 /jmate/console/stats/ 下，授权 Header 由 request.js 统一注入。
+  // 详见 docs/console-stats-api.md（jugglemate-server）。
+  // 总览：GET /jmate/console/stats/overview?from=YYYY-MM-DD&to=YYYY-MM-DD&granularity=day|hour
+  //   resp.data: { from, to, granularity, totals, new_sessions_trend, channel_ranking }
+  //   totals: { total_sessions, ai_resolved_sessions, ai_resolution_rate,
+  //             transferred_to_human (int,固定 0), transferred_to_human_pending (bool),
+  //             open_sessions, closed_sessions }
+  //   new_sessions_trend: [{ bucket, total, ai_resolved, transferred_to_human }]
+  //   channel_ranking: [{ channel_type, count, percentage }]
+  STATS_OVERVIEW: buildUrl('/jmate/console/stats/overview'),
+  // 坐席列表：GET /jmate/console/stats/agents?from=&to=&include_admin=&page=&pageSize=
+  //   resp.data.items: [{ user_id, login_account, nickname, avatar, email, role,
+  //                       inbox_count, total_sessions, responded_sessions, open_sessions,
+  //                       csat_avg, frt_avg_ms, csat_pending, frt_pending }]
+  //   resp.data: { items, total, limit, offset }
+  STATS_AGENTS: buildUrl('/jmate/console/stats/agents'),
+  // 客户列表：GET /jmate/console/stats/customers?from=&to=&keyword=&channel_type=&page=&pageSize=
+  //   resp.data.items: [{ customer_id, nickname, avatar, phone, email, identifier,
+  //                       source, session_count, last_session_time }]
+  //   resp.data: { items, total, limit, offset }
+  STATS_CUSTOMERS: buildUrl('/jmate/console/stats/customers'),
+
+  // 联系人列表（管理员视图）。
+  // 真实接口待对接，路径占位先这样写 —— 后端定义后调整。
+  // 详见 src/services/contact.js::fetchContacts。
+  CONTACTS_LIST: buildUrl('/jmate/contacts/list'),
+
+  // 坐席目录：供联系人 / 转单选择坐席 / 同事协作使用。
+  // 详见 jugglemate-server/docs/seats-list-api.md。
+  // GET /jmate/seats/list?keyword=&role=&inbox_id=&status=&page=&pageSize=
+  //   resp.data.items: [{ user_id, login_account, nickname, avatar, email,
+  //                       role: 'customer_service' | 'admin', status,
+  //                       im_token_present, inbox_ids, inbox_count,
+  //                       open_session_count, last_active_time, created_time }]
+  //   resp.data: { items, total, limit, offset }
+  SEATS_LIST: buildUrl('/jmate/seats/list')
 }
 
 async function get(url, params = {}) {

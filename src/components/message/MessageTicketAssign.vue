@@ -23,16 +23,30 @@ const content = computed(() => {
   }
 })
 
-const isSelfClaim = computed(() => content.value?.assign_type === 0)
+const assignType = computed(() => content.value?.assign_type)
 
 const text = computed(() => {
   if (!content.value) return ''
   const op = content.value.operator?.nickname || ''
   const ae = content.value.assignee?.nickname || ''
-  if (isSelfClaim.value) {
+  if (assignType.value === 0) {
+    // 自助接单
     return ae ? `${ae} 认领了工单` : '已认领工单'
   }
-  return `由 ${op} 分配给 ${ae}`
+  if (assignType.value === 1) {
+    // 转单给其他客服
+    if (op && ae) return `工单由 ${op} 转给 ${ae}`
+    if (ae) return `工单已转给 ${ae}`
+    return '工单已转移'
+  }
+  if (assignType.value === 3) {
+    // 已转为人工接待
+    return '已转为人工接待'
+  }
+  // 其他未知类型兜底
+  if (op && ae) return `由 ${op} 分配给 ${ae}`
+  if (ae) return `已分配给 ${ae}`
+  return '[工单分配]'
 })
 </script>
 

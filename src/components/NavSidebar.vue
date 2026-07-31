@@ -38,7 +38,7 @@ const isMac = isElectron && window.electronAPI?.platform === 'darwin'
 
 // 当前登录用户
 const currentUser = computed(() => userService.getCurrentUser())
-const currentUserName = computed(() => currentUser.value?.name || currentUser.value?.nick_name || '用户')
+const currentUserName = computed(() => currentUser.value?.name || currentUser.value?.nick_name || '')
 const currentUserPortrait = computed(() => currentUser.value?.portrait || currentUser.value?.avatar || '')
 
 // 角色/工号从登录接口拿，没有就回退空串（不写死假数据）
@@ -133,10 +133,22 @@ const navItems = [
   //   svg: `<line x1="12" y1="20" x2="12" y2="10"></line><line x1="18" y1="20" x2="18" y2="4"></line><line x1="6" y1="20" x2="6" y2="16"></line>`
   // },
   {
+    key: 'contacts',
+    label: '联系人',
+    adminOnly: false,
+    svg: `<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path>`
+  },
+  {
     key: 'tickets',
     label: '全量工单',
     adminOnly: true,
     svg: `<line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line>`
+  },
+  {
+    key: 'analytics',
+    label: '数据统计',
+    adminOnly: true,
+    svg: `<line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line>`
   }
 ]
 // 过滤 adminOnly 项（仅管理员可见）

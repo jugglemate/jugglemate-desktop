@@ -685,10 +685,20 @@ function formatTicketAssignPreview(rawContent) {
   const op = payload.operator?.nickname || ''
   const ae = payload.assignee?.nickname || ''
   if (payload.assign_type === 0) {
-    // 自助认领
+    // 自助接单
     return ae ? `${ae} 认领了工单` : '已认领工单'
   }
-  // 分配给他人
+  if (payload.assign_type === 1) {
+    // 转单给其他客服
+    if (op && ae) return `工单由 ${op} 转给 ${ae}`
+    if (ae) return `工单已转给 ${ae}`
+    return '[工单转移]'
+  }
+  if (payload.assign_type === 3) {
+    // 已转为人工接待
+    return '已转为人工接待'
+  }
+  // 其他未知类型
   if (op && ae) return `由 ${op} 分配给 ${ae}`
   if (ae) return `已分配给 ${ae}`
   return '[工单分配]'
@@ -784,6 +794,7 @@ export default {
   addConversationToMyTicketTag,
   removeConversationFromMyTicketTag,
   formatTicketAssignPreview,
+  formatTicketReassignPreview,
   // 响应式连接状态 — 用于 UI 展示「连接中 / 已连接」之类的指示
   connectionState,
   // 收件箱未读总数 — NavSidebar 上的「收件箱」badge 用

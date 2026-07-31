@@ -433,7 +433,6 @@ function onClickAgent(agent) {
   flex-shrink: 0;
   height: 100vh;
   background: var(--bg);
-  border-radius: var(--r-lg);
   display: flex;
   flex-direction: column;
   overflow: hidden;

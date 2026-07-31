@@ -11,7 +11,7 @@ const props = defineProps({
   },
   userName: {
     type: String,
-    default: '用户'
+    default: ''
   },
   userId: {
     type: String,

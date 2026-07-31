@@ -5,6 +5,9 @@ import NavSidebar from '../components/NavSidebar.vue'
 import Conversations from '../components/Conversations.vue'
 import ChatMain from '../components/ChatMain.vue'
 import TicketManagementView from '../views/TicketManagementView.vue'
+import StatisticsView from '../views/StatisticsView.vue'
+import ContactsView from '../views/ContactsView.vue'
+import ContactsEmptyView from '../views/ContactsEmptyView.vue'
 import AgentPanel from '../components/AgentPanel.vue'
 import UserDrawer from '../components/UserDrawer.vue'
 import AgentCreateSlideover from '../components/AgentCreateSlideover.vue'
@@ -25,7 +28,7 @@ const juggle = im.getCurrent()
 
 // Current logged-in user (from localStorage, set by login)
 const currentUser = computed(() => userService.getCurrentUser())
-const currentUserName = computed(() => currentUser.value?.name || '用户')
+const currentUserName = computed(() => currentUser.value?.name || '')
 // `role` 来自登录接口：2 = 管理员（在用户信息抽屉中显示"管理后台"入口），
 // 其他值 = 普通坐席。具体业务含义由后端定义。
 const currentUserRole = computed(() => currentUser.value?.role ?? null)
@@ -47,6 +50,8 @@ const currentUserId = computed(() => currentUser.value?.id || 'user_12345678')
 const inboxBadge = computed(() => im.inboxUnreadTotal.value || 0)
 
 function handleNavChange(nav) {
+  if (nav === activeNav.value) return
+  clearChatState()
   activeNav.value = nav
   // 团队 / 数据 暂时没路由，先打日志
   if (nav === 'team' || nav === 'data') {
@@ -142,6 +147,18 @@ const currentSessionId = computed(() => pickTicketId(currentConversation.value))
 // entry 形态：
 //   { traceId, sid, agentId, content, streaming, startedAt }
 const streamSuggestions = reactive({})
+
+function clearChatState() {
+  currentView.value = 'conversation'
+  currentConvoId.value = null
+  currentConversation.value = null
+  currentPeerSourceId.value = ''
+  currentSession.value = null
+  selectedAgentId.value = null
+  agents.splice(0, agents.length)
+  agentsLoaded.value = false
+  for (const key of Object.keys(streamSuggestions)) delete streamSuggestions[key]
+}
 
 const selectedAgent = computed(
   () => agents.find((a) => a.id === selectedAgentId.value) || null
@@ -367,6 +384,38 @@ function handleConvoSelect(convo) {
   loadAgents(convo)
 }
 
+// 联系人选中 → 构造一个形状兼容的 conversation 对象喂给 ChatMain
+//   conversationType = PRIVATE (1)，targetId = userId
+function handleContactSelect(member) {
+  // 真实接口字段是 user_id（不是 id），兜底兼容
+  const userId = member?.user_id || member?.id
+  if (!userId) return
+  const fakeConv = {
+    id: userId,
+    conversationId: userId,
+    conversationType: juggle?.ConversationType?.PRIVATE ?? 1,
+    name: member.nickname,
+    conversationTitle: member.nickname,
+    portrait: member.avatar || '',
+    conversationPortrait: member.avatar || '',
+    platform: '',
+    tags: [],
+    messages: [],
+    unread: 0,
+    unreadTag: 0,
+    isTop: false,
+    isTicket: false,
+    status: undefined,
+    ticket_id: undefined,
+    // _raw.targetId 是 ChatMain 用来定位 IM 端 user 的关键字段
+    _raw: { targetId: userId, member }
+  }
+  currentView.value = 'conversation'
+  currentConvoId.value = fakeConv.id
+  currentConversation.value = fakeConv
+  currentPeerSourceId.value = userId
+}
+
 // 认领成功后：让 IM 会话列表重新拉一次（认领会改 IM 的 my_ticket /
 // assigned tag，应该立刻反映到左侧 mine 视图）。返回 refresh() 的 promise，
 // 调用方可以 await 等待「整列表重拉 + 未读数刷新」完成。
@@ -562,37 +611,6 @@ async function handleClaimTicket(ticketId) {
       conv.status = 1  // 1 = 处理中
     }
 
-    // 2. 发系统通知消息（保留原有行为）
-    const user = currentUser.value
-    if (conv && conv.conversationId && user) {
-      const assignMsg = {
-        conversationType: conv.conversationType,
-        conversationId: conv.conversationId,
-        name: MSG_NAME.TICKET_ASSIGN,
-        content: JSON.stringify({
-          ticket_id: ticketId,
-          operator: {
-            id: user.id,
-            nickname: user.name || '用户',
-            avatar: user.avatar || ''
-          },
-          assignee: {
-            id: user.id,
-            nickname: user.name || '用户',
-            avatar: user.avatar || ''
-          },
-          assign_type: 0  // self-claim
-        })
-      }
-      // Send via IM SDK
-      const juggle = im.getCurrent()
-      if (juggle && typeof juggle.sendMessage === 'function') {
-        juggle.sendMessage(assignMsg).catch(e => {
-          console.warn('[MainView] Failed to send ticket assign notification', e)
-        })
-      }
-    }
-
     // 3. 刷新 IM 会话列表。同步给当前会话加 assigned + my_ticket tag 之后，
     //    mine 视图里应该立刻多出这一条。
     await refreshAfterClaim()
@@ -640,15 +658,10 @@ async function handleTransferTicket(payload) {
     return
   }
   try {
-    // 1) POST 后端（先尝试，不阻塞前端内存态）
-    let resp = null
-    try {
-      resp = await post(SERVER_PATH.TICKET_TRANSFER(ticket_id), {
-        assignee_id
-      })
-    } catch (e) {
-      console.warn("[MainView] TICKET_TRANSFER HTTP failed (backend likely not yet ready)", e)
-    }
+    // 1) POST 后端
+    const resp = await post(SERVER_PATH.TICKET_TRANSFER(ticket_id), {
+      assignee_id
+    })
 
     // 2) 服务端错误码检查（仅在 resp.code 存在时校验）
     if (resp && resp.code !== undefined && resp.code !== 0) {
@@ -673,39 +686,40 @@ async function handleTransferTicket(payload) {
 
     // 4) 自己 my_ticket tag 释放
     if (conv) {
-      void im.removeConversationFromMyTicketTag(conv)
+      await im.removeConversationFromMyTicketTag(conv)
     }
 
     // 5) 广播 jgm:ticketreassign
-    const user = currentUser.value
-    if (conv && conv.conversationId && user) {
-      const juggle = im.getCurrent()
-      if (juggle && typeof juggle.sendMessage === "function") {
-        const msgPayload = {
-          conversationType: conv.conversationType,
-          conversationId: conv.conversationId,
-          name: MSG_NAME.TICKET_REASSIGN,
-          content: JSON.stringify({
-            ticket_id,
-            from: { id: user.id, name: user.name || "用户" },
-            to:   { id: assignee_id, name: to_assignee_name || "" },
-            note: note || ""
-          })
-        }
-        juggle.sendMessage(msgPayload).catch(e => {
-          console.warn("[MainView] failed to send ticket_reassign", e)
-        })
-      }
-    }
+    // const user = currentUser.value
+    // if (conv && conv.conversationId && user) {
+    //   const juggle = im.getCurrent()
+    //   if (juggle && typeof juggle.sendMessage === "function") {
+    //     const msgPayload = {
+    //       conversationType: conv.conversationType,
+    //       conversationId: conv.conversationId,
+    //       name: MSG_NAME.TICKET_REASSIGN,
+    //       content: JSON.stringify({
+    //         ticket_id,
+    //         from: { id: user.id, name: user.name || "用户" },
+    //         to:   { id: assignee_id, name: to_assignee_name || "" },
+    //         note: note || ""
+    //       })
+    //     }
+    //     juggle.sendMessage(msgPayload).catch(e => {
+    //       console.warn("[MainView] failed to send ticket_reassign", e)
+    //     })
+    //   }
+    // }
 
-    // 6) 刷新会话列表 + 当前 wrapper
+    // 6) 重新拉取当前筛选下的会话列表。转移后不再 refreshOne，
+    // 否则会把已经不属于“我的工单”的当前会话重新插回列表。
     if (conversationsRef.value && typeof conversationsRef.value.refresh === "function") {
       await conversationsRef.value.refresh()
     }
-    if (conv) {
-      const refreshed = await conversationsRef.value?.refreshOne?.(conv)
-      if (refreshed) currentConversation.value = refreshed
-    }
+    currentConversation.value = null
+    currentConvoId.value = null
+    currentPeerSourceId.value = ''
+    currentSession.value = null
 
     // 7) 通知 ChatMain 关闭弹层
     chatMainRef.value?.notifyTransferResult?.({
@@ -847,9 +861,23 @@ function handleCreateAgent(data) {
       @transfer-ticket="handleTransferTicket"
     />
 
+    <!-- 数据统计（仅管理员入口） -->
+    <StatisticsView
+      v-if="activeNav === 'analytics'"
+    />
+
+    <!-- 联系人 -->
+    <ContactsView
+      v-if="activeNav === 'contacts'"
+      @select="handleContactSelect"
+    />
+
+    <!-- 联系人模式占位：未选中成员时右侧显示空态（独立组件，不复用 jm-empty） -->
+    <ContactsEmptyView v-if="activeNav === 'contacts' && hasNoSelection" />
+
     <!-- 会话面板：二级过滤侧栏 + 会话列表（IM 会话，过滤维度统一在 Conversations 内部） -->
     <Conversations
-      v-if="activeNav !== 'tickets'"
+      v-if="activeNav !== 'tickets' && activeNav !== 'analytics' && activeNav !== 'contacts'"
       ref="conversationsRef"
       :active-id="currentView === 'conversation' ? currentConvoId : null"
       @select="handleConvoSelect"
@@ -858,7 +886,7 @@ function handleCreateAgent(data) {
 
     <ChatMain
       ref="chatMainRef"
-      v-if="!hasNoSelection && activeNav !== 'tickets'"
+      v-if="!hasNoSelection && activeNav !== 'tickets' && activeNav !== 'analytics'"
       :conversation="currentView === 'conversation' ? currentConversation : null"
       :peer-source-id="currentPeerSourceId"
       :messages="currentMessages"
@@ -878,7 +906,7 @@ function handleCreateAgent(data) {
     />
 
     <AgentPanel
-      v-if="!hasNoSelection && currentCustomerInfo && activeNav !== 'tickets'"
+      v-if="!hasNoSelection && currentCustomerInfo && activeNav !== 'tickets' && activeNav !== 'analytics' && activeNav !== 'contacts'"
       :customer="currentCustomerInfo"
       :is-assigned="isAssignedConversation"
       :agents="agents"
@@ -887,7 +915,7 @@ function handleCreateAgent(data) {
       @customer-info-loaded="onCustomerInfoLoaded"
     />
 
-    <main v-if="hasNoSelection && activeNav !== 'tickets'" class="jm-empty">
+    <main v-if="hasNoSelection && activeNav !== 'tickets' && activeNav !== 'analytics' && activeNav !== 'contacts'" class="jm-empty">
       <div class="jm-empty__inner">
         <div class="jm-empty__art" aria-hidden="true">
           <svg viewBox="0 0 120 88" fill="none">

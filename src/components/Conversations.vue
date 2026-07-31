@@ -231,6 +231,7 @@ function shortFormat(message) {
   const { name, content } = message
   if (!content) return ''
   if (name === MSG_NAME.TICKET_ASSIGN) return im.formatTicketAssignPreview(content)
+  if (name === MSG_NAME.TICKET_REASSIGN) return im.formatTicketReassignPreview(content)
   if (typeof content === 'string') return content
   if (content.content !== undefined && content.content !== null) return String(content.content)
   if (content.text) return content.text
@@ -244,6 +245,22 @@ function shortFormat(message) {
 }
 
 function getConversationId(c) { return c?.conversationId || c?.id || '' }
+
+const ticketStatusMeta = {
+  [TICKET_GLOBAL_TAG.STATUS_PENDING]: { label: '待处理', className: 'tag-status--pending' },
+  [TICKET_GLOBAL_TAG.STATUS_PROCESSING]: { label: '处理中', className: 'tag-status--processing' },
+  [TICKET_GLOBAL_TAG.STATUS_CLOSED]: { label: '已关闭', className: 'tag-status--closed' },
+  [TICKET_GLOBAL_TAG.STATUS_REOPEN]: { label: '重新打开', className: 'tag-status--reopen' }
+}
+
+function resolveTicketStatus(conversation) {
+  const tags = Array.isArray(conversation?.tags) ? conversation.tags : []
+  for (const tag of tags) {
+    const tagId = typeof tag === 'string' ? tag : tag?.id
+    if (ticketStatusMeta[tagId]) return ticketStatusMeta[tagId]
+  }
+  return null
+}
 
 // 把 im 会话映射成视图/模板需要的字段。
 // 保留这些 key（默认 false/undefined），是为了和工单会话对象保持 shape 一致，
@@ -274,6 +291,7 @@ function mapConversation(c) {
     _raw: c
   }
 }
+
 
 // 关键：SDK 推 CONVERSATION_CHANGED / CONVERSATION_ADDED 事件时，
 // 对象可能是稀疏的（只带 id + unreadCount / 一些简单字段，没有 conversationTitle / portrait），
@@ -408,16 +426,20 @@ async function fetchConversations() {
     // 接管 tag 同步必须用全量：视图 + 平台 + 状态 交集之后的 list 是不完整的，
     // 如果用它去 sync，会把"其他平台/其他视图里被托管的会话"从本地 Set 里清掉。
     // 这条调用和视图渲染无关，失败也不能影响主流程。
+    // 收件箱仅显示群组会话（conversationType = GROUP = 2）。
+    // 视图 / 平台 / 状态 tag 过滤逻辑保留不变，叠加在群组范围上做交集。
+    const GROUP_TYPE = 2
     const calls = [
-      juggle.getConversations(viewParams),
+      juggle.getConversations({ ...viewParams, conversationType: GROUP_TYPE }),
       platformTag
-        ? juggle.getConversations({ tag: platformTag })
+        ? juggle.getConversations({ tag: platformTag, conversationType: GROUP_TYPE })
         : Promise.resolve(null),
       statusTag
-        ? juggle.getConversations({ tag: statusTag })
+        ? juggle.getConversations({ tag: statusTag, conversationType: GROUP_TYPE })
         : Promise.resolve(null),
       // 全量拉，用于接管 tag 同步。和视图/平台/状态过滤无关，单独发。
-      juggle.getConversations({}).catch((e) => {
+      // 同样限定在群组范围内，避免把私聊会话的接管 tag 也同步过来。
+      juggle.getConversations({ conversationType: GROUP_TYPE }).catch((e) => {
         console.warn('[Conversations] 全量拉取失败，跳过接管 tag 同步', e)
         return null
       })
@@ -493,9 +515,11 @@ async function fetchUnreadCounts() {
   //
   // 兜底：拿不到全量时退到 getTotalUnreadcount({}) 拿单点。
   if (!juggle?.getConversations) return
+  // 未读数也只在群组范围内统计；保留 GROUP_TYPE 常量。
+  const GROUP_TYPE = 2
   let fullList = []
   try {
-    const res = await juggle.getConversations({})
+    const res = await juggle.getConversations({ conversationType: GROUP_TYPE })
     fullList = (res?.conversations) || []
   } catch (e) {
     console.warn('[Conversations] fetchUnreadCounts 全量拉取失败, 走兜底', e)
@@ -903,8 +927,13 @@ defineExpose({
                   <span class="conv-item__unread-num">{{ convo.unread > 99 ? '99+' : convo.unread }}</span>
                 </span>
               </div>
-              <div v-if="convo.platform" class="conv-item__tags">
-                <span class="tag tag-info">{{ resolvePlatformMeta(convo)?.label || convo.platform }}</span>
+              <div v-if="convo.platform || resolveTicketStatus(convo)" class="conv-item__tags">
+                <span v-if="convo.platform" class="tag tag-info">{{ resolvePlatformMeta(convo)?.label || convo.platform }}</span>
+                <span
+                  v-if="resolveTicketStatus(convo)"
+                  class="tag tag-status"
+                  :class="resolveTicketStatus(convo).className"
+                >{{ resolveTicketStatus(convo).label }}</span>
               </div>
             </div>
           </div>
@@ -1371,4 +1400,8 @@ defineExpose({
   flex-shrink: 0;
 }
 .tag-info { background: var(--info-soft); color: var(--info); }
+.tag-status--pending { background: #FFF4E5; color: #B45309; }
+.tag-status--processing { background: #EAF3FF; color: #1D6FD6; }
+.tag-status--closed { background: #F1F3F5; color: #6B7280; }
+.tag-status--reopen { background: #F2EDFF; color: #6D45D6; }
 </style>
