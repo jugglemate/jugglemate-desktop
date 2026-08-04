@@ -23,6 +23,11 @@
       "output": "release"
     },
     "mac": {
+      "identity": "Beijing Qiyilu Technology Co., Ltd (H7PDHSK3C7)",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
       "target": [
         "dmg",
         "zip"

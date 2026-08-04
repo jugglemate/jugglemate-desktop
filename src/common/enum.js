@@ -48,7 +48,9 @@ export const MSG_NAME = {
   // 与 jugglemate-server 现存自定义消息名规范一致（待后端最终确认）。
   // payload 见 docs/sprint-1-revised-backend.md §3.2：
   //   { ticket_id, from:{id,name}, to:{id,name}, note }
-  TICKET_REASSIGN: 'jgm:ticketreassign'
+  TICKET_REASSIGN: 'jgm:ticketreassign',
+  CSAT: 'jgm:csat',
+  CSAT_REPLY: 'jgm:csatreply'
   // 工单转移广播 content 是 JSON 字符串（发送端 JSON.stringify 后下发，接收端
   // parseTicketAssignContent 同时兼容 string 和已解析 object 两种形态），示例：
   // {

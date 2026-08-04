@@ -10,7 +10,7 @@
  *   - GET /jmate/console/stats/agents?from=&to=&include_admin=&page=&pageSize=
  *       → 坐席排行榜
  *
- * 占位字段（后端 pending=true）：transferred_to_human / csat_avg / frt_avg_ms
+ * 占位字段（后端 pending=true）：transferred_to_human / csat_avg
  *   UI 渲染为「数据采集中」徽章，避免把 0/null 当成真实数据。
  */
 
@@ -137,11 +137,10 @@ function agentInitials(nickname) {
   return nickname.slice(0, 2).toUpperCase()
 }
 
-// 状态标记：根据 open_sessions 阈值映射（后端没给现成状态）
-function agentStatus(openSessions) {
-  if (openSessions === 0) return { label: '优秀', tone: 'success' }
-  if (openSessions <= 5)  return { label: '达标', tone: 'primary' }
-  return { label: '预警', tone: 'error' }
+function nullableNumber(value) {
+  if (value === null || value === undefined || value === '') return null
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
 }
 
 // ====================== 加载总览 ======================
@@ -197,22 +196,22 @@ async function loadAgents() {
     if (res?.code === 0 && res.data) {
       const items = Array.isArray(res.data.items) ? res.data.items : []
       // 后端按 total_sessions DESC 排序；前端再用「全局排序」加 rank
-      leaderboard.value = items.map((a, i) => ({
-        rank: (agentPager.page - 1) * agentPager.pageSize + i + 1,
-        userId: a.user_id,
-        name: a.nickname || a.login_account || '-',
-        initials: agentInitials(a.nickname || a.login_account),
-        avatar: a.avatar || '',
-        role: a.role,
-        handled: a.total_sessions ?? 0,
-        responded: a.responded_sessions ?? 0,
-        open: a.open_sessions ?? 0,
-        csat: a.csat_avg,
-        csatPending: !!a.csat_pending,
-        frtMs: a.frt_avg_ms,
-        frtPending: !!a.frt_pending,
-        status: agentStatus(a.open_sessions ?? 0)
-      }))
+      leaderboard.value = items.map((a, i) => {
+        const csat = nullableNumber(a.csat_avg)
+        return {
+          rank: (agentPager.page - 1) * agentPager.pageSize + i + 1,
+          userId: a.user_id,
+          name: a.nickname || a.login_account || '-',
+          initials: agentInitials(a.nickname || a.login_account),
+          avatar: a.avatar || '',
+          role: a.role,
+          handled: a.total_sessions ?? 0,
+          responded: a.responded_sessions ?? 0,
+          open: a.open_sessions ?? 0,
+          csat,
+          csatPending: !!a.csat_pending || csat === null
+        }
+      })
       agentPager.total = Number(res.data.total || 0)
     }
   } catch (e) {
@@ -242,14 +241,6 @@ function gotoAgentPage(p) {
 function fmtPercent(v) {
   if (v == null) return '—'
   return `${Number(v).toFixed(1)}%`
-}
-
-function fmtMs(ms) {
-  if (ms == null) return '—'
-  if (ms < 1000) return `${ms}ms`
-  const sec = ms / 1000
-  if (sec < 60) return `${sec.toFixed(1)}s`
-  return `${Math.floor(sec / 60)}m ${Math.floor(sec % 60)}s`
 }
 
 // 把 'YYYY-MM-DD' / 'YYYY-MM-DD HH' 拆成 { month, day, hour }
@@ -429,15 +420,14 @@ onMounted(() => reloadAll())
                 <th>回复会话量</th>
                 <th>CSAT 满意度</th>
                 <th>FRT 首响时间</th>
-                <th>状态标记</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="item in tableRows" :key="item._key">
-                <td v-if="item._kind === 'placeholder'" colspan="6" class="sv__placeholder">{{ item.text }}</td>
+                <td v-if="item._kind === 'placeholder'" colspan="5" class="sv__placeholder">{{ item.text }}</td>
                 <template v-else>
                   <td>
-                    <span class="sv__rank" :class="{ 'sv__rank--top': item.row.rank === 1, 'sv__rank--warn': item.row.status.tone === 'error' }">{{ item.row.rank }}</span>
+                    <span class="sv__rank" :class="{ 'sv__rank--top': item.row.rank === 1 }">{{ item.row.rank }}</span>
                   </td>
                   <td>
                     <div class="sv__agent">
@@ -467,11 +457,7 @@ onMounted(() => reloadAll())
                     </div>
                   </td>
                   <td class="sv__num">
-                    <span v-if="item.row.frtPending" class="sv__pending-text">数据采集中</span>
-                    <span v-else>{{ fmtMs(item.row.frtMs) }}</span>
-                  </td>
-                  <td>
-                    <span class="sv__pill" :class="`sv__pill--${item.row.status.tone}`">{{ item.row.status.label }}</span>
+                    <span class="sv__pending-text">待实现</span>
                   </td>
                 </template>
               </tr>
@@ -829,18 +815,6 @@ onMounted(() => reloadAll())
 .sv__csat-num { font-weight: 500; font-variant-numeric: tabular-nums; }
 .sv__csat-num--error { color: var(--error, #ef4444); }
 
-.sv__pill {
-  display: inline-block;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-.sv__pill--success { background: #d6f5e6; color: var(--secondary, #006c49); }
-.sv__pill--primary { background: var(--primary-fixed, #e0f0ff); color: var(--primary, #0080ff); }
-.sv__pill--error { background: #ffe5e5; color: var(--error, #ef4444); }
-
 @media (max-width: 1100px) {
   .sv__metrics { grid-template-columns: repeat(2, 1fr); }
   .sv__channel-grid { grid-template-columns: 1fr; }
@@ -1050,7 +1024,6 @@ onMounted(() => reloadAll())
   color: var(--text-3, #94a3b8);
 }
 .sv__rank--top { background: #ffefd4; color: #b06a00; }
-.sv__rank--warn { background: #fee2e2; color: #991b1b; }
 .sv__pager {
   display: flex;
   align-items: center;

@@ -27,6 +27,8 @@ import MessageUnknown from './MessageUnknown.vue'
 import MessageRecall from './MessageRecall.vue'
 import MessageTicketAssign from './MessageTicketAssign.vue'
 import MessageTicketReassign from './MessageTicketReassign.vue'
+import MessageCSAT from './MessageCSAT.vue'
+import MessageCSATReply from './MessageCSATReply.vue'
 
 const props = defineProps({
   message: {
@@ -70,6 +72,8 @@ const kind = computed(() => {
   if (m.name === MSG_NAME.ANIMATION_STICKER) return 'sticker'
   if (m.name === MSG_NAME.TICKET_ASSIGN) return 'ticketassign'
   if (m.name === MSG_NAME.TICKET_REASSIGN) return 'ticketreassign'
+  if (m.name === MSG_NAME.CSAT_REPLY) return 'csatreply'
+  if (m.name === MSG_NAME.CSAT || m.content?.kind === 'csat') return 'csat'
   return 'unknown'
 })
 
@@ -155,6 +159,8 @@ function onPreview(payload) {
     <MessageVoice v-else-if="kind === 'voice'" :message="message" />
     <MessageContactCard v-else-if="kind === 'card'" :message="message" />
     <MessageMerge v-else-if="kind === 'merge'" :message="message" />
+    <MessageCSAT v-else-if="kind === 'csat'" :message="message" />
+    <MessageCSATReply v-else-if="kind === 'csatreply'" :message="message" />
     <MessageUnknown v-else :message="message" />
 
     <template #footer>

@@ -295,7 +295,9 @@ function init() {
       { name: MSG_NAME.REPLAY_MSG, isCount: true, isStorage: true },
       { name: MSG_NAME.TICKET_ASSIGN, isCount: true, isStorage: true },
       // 工单转移广播（后端 broadcast，文末 docs/sprint-1-revised-backend.md §3.2）
-      { name: MSG_NAME.TICKET_REASSIGN, isCount: true, isStorage: true }
+      { name: MSG_NAME.TICKET_REASSIGN, isCount: true, isStorage: true },
+      { name: MSG_NAME.CSAT, isCount: true, isStorage: true },
+      { name: MSG_NAME.CSAT_REPLY, isCount: true, isStorage: true }
     ])
   }
   // Keep the takeover-tag local set in sync with the SDK. The events come
@@ -669,6 +671,8 @@ function msgShortFormat(message) {
   if (name === MSG_NAME.GROUP_NTF) return '[群通知]'
   if (name === MSG_NAME.TICKET_ASSIGN) return formatTicketAssignPreview(content)
   if (name === MSG_NAME.TICKET_REASSIGN) return formatTicketReassignPreview(content)
+  if (name === MSG_NAME.CSAT) return '请评价本次服务'
+  if (name === MSG_NAME.CSAT_REPLY) return '已提交服务评价'
   if (name === MSG_NAME.FRIEND_NTF) return '[好友通知]'
   if (name === MessageType.RECALL_INFO) return '[撤回了一条消息]'
   if (name === MessageType.CALL_1V1_FINISHED) return '[通话结束]'
