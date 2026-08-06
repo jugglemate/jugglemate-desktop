@@ -198,9 +198,13 @@ async function createWindow() {
   const { session } = require('electron')
   session.defaultSession.clearStorageData({ storages: ['cookies', 'indexdb', 'serviceworkers', 'cachestorage'] })
 
-  // 绕过浏览器 CORS：前端 IM SDK 需要直连 ws.snailchat.im
+  // 绕过浏览器 CORS：前端 IM SDK 直连 ws.snailchat.im + API 请求 mate.juggle.im
+  // Electron 从 http://127.0.0.1:port 加载页面，跨域请求需要注入 CORS 响应头。
   session.defaultSession.webRequest.onHeadersReceived(
-    { urls: ['https://ws.snailchat.im/*', 'http://ws.snailchat.im/*'] },
+    { urls: [
+      'https://ws.snailchat.im/*', 'http://ws.snailchat.im/*',
+      'https://mate.juggle.im/*', 'http://mate.juggle.im/*',
+    ] },
     (details, callback) => {
       details.responseHeaders['Access-Control-Allow-Origin'] = ['*']
       details.responseHeaders['Access-Control-Allow-Methods'] = ['GET, POST, PUT, DELETE, OPTIONS']

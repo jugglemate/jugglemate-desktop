@@ -86,8 +86,10 @@ async function uploadFile(url, file, extraFields = {}, fieldName = 'file') {
  * Build full URL from path
  */
 function buildUrl(path) {
-  const protocol = location.protocol === 'file:' ? 'https:' : location.protocol
-  return `${protocol}//${getApiBaseUrl()}${path}`
+  // 始终使用 https：Electron 生产模式下页面从 http://127.0.0.1:port 加载，
+  // location.protocol 为 http:，会导致 API 请求走 HTTP → 服务器 301/302 重定向到
+  // HTTPS → CORS 预检不允许跟随重定向 → 请求失败。
+  return `https://${getApiBaseUrl()}${path}`
 }
 
 export { request, uploadFile, buildUrl }
