@@ -19,6 +19,45 @@
   -webkit-app-region: drag;
 }
 
+/*
+ * Frameless Electron window drag regions.
+ * Headers remain draggable across every signed-in view, while their controls
+ * are explicitly excluded below so clicks, focus and text entry keep working.
+ */
+.tyn-title-bar,
+.chat-header,
+.tyn-chat-header,
+.sidebar__header,
+.tyn-sidebar__header,
+.agent-panel__header,
+.tyn-agent-panel__header,
+.conv-list-head,
+.side-tabs,
+.sv__header,
+.tmv__list-header,
+.tmv__detail-header,
+.cv__list-header {
+  -webkit-app-region: drag;
+}
+
+.app-container button,
+.app-container input,
+.app-container textarea,
+.app-container select,
+.app-container a,
+.app-container label,
+.app-container [role="button"],
+.app-container [contenteditable="true"],
+.app-container .tyn-chat-header__actions,
+.app-container .side-tab,
+.app-container .sv__time-filter,
+.app-container .tmv__search,
+.app-container .tmv__list-actions,
+.app-container .tmv__detail-actions,
+.app-container .cv__search {
+  -webkit-app-region: no-drag;
+}
+
 /* Layout Toggle */
 .layout-toggle {
   display: flex;
@@ -2958,6 +2997,16 @@
   background: var(--bg-soft);
   /* border-radius: var(--r-lg); */
   overflow: hidden;
+  -webkit-app-region: drag;
+}
+
+.jm-empty button,
+.jm-empty input,
+.jm-empty textarea,
+.jm-empty select,
+.jm-empty a,
+.jm-empty [role="button"] {
+  -webkit-app-region: no-drag;
 }
 
 .jm-empty__inner {

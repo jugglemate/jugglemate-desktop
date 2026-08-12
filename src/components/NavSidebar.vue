@@ -220,6 +220,15 @@ const visibleNavItems = computed(() => navItems.filter((it) => !it.adminOnly || 
   z-index: 5;
   height: 100vh;
   position: relative;
+  /* The signed-in toolbar itself is a large, convenient window drag target. */
+  -webkit-app-region: drag;
+}
+
+/* Clickable toolbar content must never be swallowed by the drag region. */
+.nav-rail .nav-item,
+.nav-rail .me-mini,
+.nav-rail :deep(.me-popover) {
+  -webkit-app-region: no-drag;
 }
 
 /* macOS：为系统 traffic lights 留出 38px 顶部空间 */

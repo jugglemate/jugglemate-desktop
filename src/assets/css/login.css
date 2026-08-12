@@ -6,6 +6,8 @@
   min-height: 100vh;
   display: flex;
   position: relative;
+  /* Frameless Electron window: every non-interactive blank area can move it. */
+  -webkit-app-region: drag;
 }
 
 .login-page__drag-region {
@@ -16,6 +18,19 @@
   height: 36px;
   z-index: 20;
   -webkit-app-region: drag;
+}
+
+/* Keep form controls fully interactive inside the page-wide drag region. */
+.login-page button,
+.login-page input,
+.login-page textarea,
+.login-page select,
+.login-page a,
+.login-page label,
+.login-page [role="button"],
+.login-page [contenteditable="true"],
+.login-card form {
+  -webkit-app-region: no-drag;
 }
 
 /* ==========================================================================
