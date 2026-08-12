@@ -55,7 +55,7 @@ const CHANNEL_META = {
   web:         { label: 'Web',      color: '#7C3AED' },
   telegram:    { label: 'Telegram', color: '#FF2442' },
   jugglechat:  { label: 'JuggleChat', color: '#07C160' },
-  watchapp:    { label: 'WatchApp', color: '#0EA5E9' }
+  watchapp:    { label: 'WhatsApp', color: '#0EA5E9' }
 }
 function channelMeta(key) {
   return CHANNEL_META[key] || CHANNEL_META['']

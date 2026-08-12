@@ -120,7 +120,7 @@ async function handleLogin() {
           </div>
           <div class="login-feature-card__body">
             <h3 class="login-feature-card__title">聚合多渠道私信，统一处理</h3>
-            <p class="login-feature-card__desc">把 Web、Telegram、JuggleChat、WatchApp 等渠道的客服对话收进同一个收件箱，一个界面回复所有消息。</p>
+            <p class="login-feature-card__desc">把 Web、Telegram、JuggleChat、WhatsApp 等渠道的客服对话收进同一个收件箱，一个界面回复所有消息。</p>
           </div>
         </div>
         <div class="login-feature-card">
