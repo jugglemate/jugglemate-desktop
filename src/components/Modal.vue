@@ -45,8 +45,8 @@ function onBackdropClick(e) {
 
 <template>
   <Teleport to="body">
-    <div v-if="show" class="tyn-modal-overlay" @click="onBackdropClick">
-      <div class="tyn-modal">
+    <div v-if="show" class="tyn-modal-overlay" data-modal-root @click="onBackdropClick">
+      <div class="tyn-modal" role="dialog" aria-modal="true" :aria-label="title">
         <div class="tyn-modal__header">
           <h3 class="tyn-modal__title">{{ title }}</h3>
         </div>

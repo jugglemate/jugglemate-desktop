@@ -52,7 +52,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <dialog ref="dialog" class="jm-image-preview" @cancel="onCancel" @click="onBackdropClick">
+  <dialog ref="dialog" class="jm-image-preview" data-modal-root @cancel="onCancel" @click="onBackdropClick">
     <div class="jm-image-preview__inner" @click.stop>
       <button
         class="jm-image-preview__close"

@@ -58,6 +58,16 @@
   -webkit-app-region: no-drag;
 }
 
+/*
+ * Modal layers can overlap a frameless window's draggable headers. Electron
+ * still considers the pixels below them draggable unless the top layer opts
+ * out explicitly, so keep every modal root and all of its controls interactive.
+ */
+[data-modal-root],
+[data-modal-root] * {
+  -webkit-app-region: no-drag;
+}
+
 /* Layout Toggle */
 .layout-toggle {
   display: flex;

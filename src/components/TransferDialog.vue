@@ -69,8 +69,8 @@ watch(() => props.show, (val) => {
 
 <template>
   <Teleport to="body">
-    <div v-if="show" class="jm-transfer-mask" @click.self="emit('cancel')">
-      <div class="jm-transfer-dialog">
+    <div v-if="show" class="jm-transfer-mask" data-modal-root @click.self="emit('cancel')">
+      <div class="jm-transfer-dialog" role="dialog" aria-modal="true" :aria-label="title">
         <div class="jm-transfer-dialog__header">
           <h3 class="jm-transfer-dialog__title">{{ title }}</h3>
           <button

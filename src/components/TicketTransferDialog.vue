@@ -184,7 +184,7 @@ function initial(name) {
 
 <template>
   <Teleport to="body">
-    <div v-if="show" class="trf-overlay" @click="onBackdropClick">
+    <div v-if="show" class="trf-overlay" data-modal-root @click="onBackdropClick">
       <div class="trf" role="dialog" aria-modal="true">
 
         <!-- Header -->
