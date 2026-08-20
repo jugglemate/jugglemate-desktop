@@ -32,19 +32,22 @@ const STATUS_TABS = [
   { key: 'all', label: '全部' },
   { key: '0', label: '待处理' },
   { key: '1', label: '处理中' },
-  { key: '2', label: '已关闭' }
+  { key: '2', label: '已关闭' },
+  { key: '3', label: '重新打开' }
 ]
 
-// 服务端 status 字段（数字）：0 待处理 / 1 处理中 / 2 已关闭
+// 服务端 status 字段（数字）：0 待处理 / 1 处理中 / 2 已关闭 / 3 重新打开
 const STATUS_LABEL = {
   0: '待处理',
   1: '处理中',
-  2: '已关闭'
+  2: '已关闭',
+  3: '重新打开'
 }
 const STATUS_TONE = {
   0: 'pending',
   1: 'active',
-  2: 'closed'
+  2: 'closed',
+  3: 'reopened'
 }
 
 const PLATFROM_FROM_TAG = {
@@ -969,6 +972,10 @@ defineExpose({ reload: loadTickets })
 .tmv__pill--closed {
   background: rgba(71, 85, 105, 0.1);
   color: #475569;
+}
+.tmv__pill--reopened {
+  background: rgba(124, 77, 255, 0.1);
+  color: #7c4dff;
 }
 
 .tmv__muted {

@@ -1,7 +1,5 @@
 <script setup>
-// Video bubble. Inline player with poster-less controls; the cover is the
-// first frame. Click-to-play toggle keeps it lightweight — full-screen via
-// the native video controls.
+// Video bubble with a custom full-size play/pause overlay and remaining time.
 
 import { computed, ref } from 'vue'
 
@@ -24,14 +22,22 @@ const height = computed(() => Number(props.message?.content?.height) || 0)
 
 const isPlaying = ref(false)
 const videoEl = ref(null)
+const remainingSeconds = ref(0)
+
+const remainingTime = computed(() => {
+  const seconds = Math.max(0, remainingSeconds.value)
+  const minutes = Math.floor(seconds / 60)
+  const restSeconds = seconds % 60
+  return `${String(minutes).padStart(2, '0')}:${String(restSeconds).padStart(2, '0')}`
+})
 
 const STYLE = computed(() => {
-  if (width > 0 && height > 0) {
+  if (width.value > 0 && height.value > 0) {
     const maxW = 320
     const maxH = 360
-    const ratio = width / height
-    let w = width
-    let h = height
+    const ratio = width.value / height.value
+    let w = width.value
+    let h = height.value
     if (w > maxW) {
       w = maxW
       h = Math.round(w / ratio)
@@ -45,22 +51,30 @@ const STYLE = computed(() => {
   return { width: '240px', height: '180px' }
 })
 
-function togglePlay(e) {
-  // Don't toggle when the user clicks the native control bar.
-  if (e?.target?.controls || e?.target?.tagName === 'VIDEO') return
+function updateRemainingTime() {
+  if (!videoEl.value || !Number.isFinite(videoEl.value.duration)) return
+  remainingSeconds.value = Math.max(
+    0,
+    Math.ceil(videoEl.value.duration - videoEl.value.currentTime)
+  )
+}
+
+async function togglePlay() {
   if (!videoEl.value) return
   if (videoEl.value.paused) {
-    videoEl.value.play()
-    isPlaying.value = true
+    try {
+      await videoEl.value.play()
+    } catch {
+      isPlaying.value = false
+    }
   } else {
     videoEl.value.pause()
-    isPlaying.value = false
   }
 }
 </script>
 
 <template>
-  <div class="jm-msg-video" :style="STYLE" @click="togglePlay">
+  <div class="jm-msg-video" :style="STYLE">
     <video
       v-if="url"
       ref="videoEl"
@@ -68,12 +82,25 @@ function togglePlay(e) {
       :src="url"
       preload="metadata"
       playsinline
-      controls
+      @loadedmetadata="updateRemainingTime"
+      @durationchange="updateRemainingTime"
+      @timeupdate="updateRemainingTime"
+      @play="isPlaying = true"
+      @pause="isPlaying = false"
+      @ended="isPlaying = false; updateRemainingTime()"
     ></video>
     <div v-else class="jm-msg-video__placeholder">视频加载失败</div>
-    <div v-if="!isPlaying && url" class="jm-msg-video__play" aria-hidden="true">
-      ▶
-    </div>
+    <button
+      v-if="url"
+      class="jm-msg-video__overlay"
+      :class="{ 'jm-msg-video__overlay--playing': isPlaying }"
+      type="button"
+      :aria-label="isPlaying ? '暂停视频' : '播放视频'"
+      @click="togglePlay"
+    >
+      <span v-if="!isPlaying" class="jm-msg-video__play" aria-hidden="true">▶</span>
+      <span class="jm-msg-video__duration">{{ remainingTime }}</span>
+    </button>
   </div>
 </template>
 
@@ -101,20 +128,53 @@ function togglePlay(e) {
   font-size: 12px;
 }
 
-.jm-msg-video__play {
+.jm-msg-video__overlay {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 32px;
-  color: rgba(255, 255, 255, 0.9);
+  color: white;
   background: rgba(0, 0, 0, 0.25);
-  pointer-events: none;
-  transition: opacity var(--t-fast);
+  cursor: pointer;
+  transition: background var(--t-fast);
 }
 
-.jm-msg-video:hover .jm-msg-video__play {
-  opacity: 0.9;
+.jm-msg-video__overlay--playing {
+  background: transparent;
+}
+
+.jm-msg-video__overlay:focus-visible {
+  outline: 2px solid white;
+  outline-offset: -3px;
+}
+
+.jm-msg-video__play {
+  display: flex;
+  width: 52px;
+  height: 52px;
+  align-items: center;
+  justify-content: center;
+  padding-left: 4px;
+  border-radius: 50%;
+  font-size: 28px;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.95);
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.jm-msg-video__duration {
+  position: absolute;
+  left: 10px;
+  bottom: 8px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: white;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
 }
 </style>
