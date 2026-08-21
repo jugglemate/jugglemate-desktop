@@ -37,7 +37,9 @@ const props = defineProps({
     type: String,
     default: 'left',
     validator: (v) => v === 'left' || v === 'right'
-  }
+  },
+  translationEnabled: { type: Boolean, default: false },
+  translationsVisible: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['select', 'close'])
@@ -78,7 +80,15 @@ const groups = computed(() => {
   if (isText.value) {
     g.push({
       key: 'g-copy',
-      items: [{ key: 'copy', label: '复制消息' }]
+      items: [
+        { key: 'copy', label: '复制消息' },
+        ...(props.translationEnabled && props.translationsVisible && props.message?.translation?.translatedText && props.message?.translationVisible === false
+          ? [{ key: 'show-translation', label: '显示译文' }]
+          : []),
+        ...(props.translationEnabled && props.message?.name === MessageType.TEXT
+          ? [{ key: 'translate', label: props.message?.translation?.translatedText ? '重新翻译' : '翻译' }]
+          : [])
+      ]
     })
   }
   // Group 2: reply / forward
@@ -231,6 +241,10 @@ defineExpose({ rootEl, flipped: flippedRef })
                 v-else-if="item.key === 'reply'"
                 viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
               ><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+              <svg
+                v-else-if="item.key === 'translate' || item.key === 'show-translation'"
+                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+              ><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M8 8h8M9 16h6"/></svg>
               <svg
                 v-else-if="item.key === 'transfer'"
                 viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"

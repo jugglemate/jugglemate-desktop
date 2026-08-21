@@ -29,6 +29,7 @@ import MessageTicketAssign from './MessageTicketAssign.vue'
 import MessageTicketReassign from './MessageTicketReassign.vue'
 import MessageCSAT from './MessageCSAT.vue'
 import MessageCSATReply from './MessageCSATReply.vue'
+import MessageTranslation from './MessageTranslation.vue'
 
 const props = defineProps({
   message: {
@@ -47,7 +48,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['resend', 'context', 'reaction', 'preview'])
+const emit = defineEmits(['resend', 'context', 'reaction', 'preview', 'translationRetry'])
 
 const { MessageType, ConversationType } = im
 
@@ -162,6 +163,12 @@ function onPreview(payload) {
     <MessageCSAT v-else-if="kind === 'csat'" :message="message" />
     <MessageCSATReply v-else-if="kind === 'csatreply'" :message="message" />
     <MessageUnknown v-else :message="message" />
+    <MessageTranslation
+      v-if="kind === 'text'"
+      :message="message"
+      :visible="message.translationVisible !== false"
+      @retry="(m) => emit('translationRetry', m)"
+    />
 
     <template #footer>
       <MessageReaction

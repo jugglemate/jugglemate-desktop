@@ -194,9 +194,13 @@ async function createWindow() {
   mainWindow.once('show', dismissSplash)
   // 兜底：3 秒无论如何都关掉 splash，避免卡死
   setTimeout(dismissSplash, 3000)
-  // 开发模式每次启动清缓存，避免旧页面残留。但保留 localStorage 以免登录态丢失。
+  // 开发模式只清理可再生成的页面缓存。不要清理 IndexedDB：JuggleIM PC
+  // provider 会把消息及 message.attribute（例如翻译结果）保存在本地消息库中。
+  // 启动时删除 IndexedDB 会导致 Electron 重启后本地消息扩展丢失。
   const { session } = require('electron')
-  session.defaultSession.clearStorageData({ storages: ['cookies', 'indexdb', 'serviceworkers', 'cachestorage'] })
+  if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
+    await session.defaultSession.clearStorageData({ storages: ['serviceworkers', 'cachestorage'] })
+  }
 
   // 绕过浏览器 CORS：前端 IM SDK 直连 ws.snailchat.im + API 请求 mate.juggle.im
   // Electron 从 http://127.0.0.1:port 加载页面，跨域请求需要注入 CORS 响应头。

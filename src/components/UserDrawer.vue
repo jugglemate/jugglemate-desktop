@@ -3,6 +3,12 @@ import { computed, ref, watch } from 'vue'
 import { CONFIG, getApiBaseUrl } from '../config'
 import toast from '../common/toast'
 import userService from '../services/user'
+import { isElectron } from '../common/platform'
+import {
+  getTranslationSettings,
+  saveTranslationSettings,
+  TRANSLATION_LANGUAGES
+} from '../services/translation-settings'
 
 const props = defineProps({
   show: {
@@ -29,17 +35,39 @@ const emit = defineEmits(['close', 'logout'])
 const isAdmin = computed(() => Number(props.userRole) === 2)
 const editableName = ref(props.userName)
 const editableAvatar = ref('')
+const translationEnabled = ref(false)
+const translationTargetLang = ref('zh-CN')
+const showTranslationSettings = isElectron()
 watch(() => props.show, (visible) => {
   if (!visible) return
   const user = userService.getCurrentUser() || {}
   editableName.value = user.name || props.userName
   editableAvatar.value = user.portrait || user.avatar || ''
+  if (showTranslationSettings) {
+    const settings = getTranslationSettings(user.id || props.userId)
+    translationEnabled.value = settings.enabled
+    translationTargetLang.value = settings.targetLang
+  }
 })
 
 function saveProfile() {
   const name = editableName.value.trim()
   if (!name) return
-  userService.updateCurrentUser({ name, portrait: editableAvatar.value.trim() })
+  const updated = userService.updateCurrentUser({ name, portrait: editableAvatar.value.trim() })
+  if (!updated) {
+    toast.error?.('个人信息保存失败')
+    return
+  }
+  if (showTranslationSettings) {
+    const saved = saveTranslationSettings({
+      enabled: translationEnabled.value,
+      targetLang: translationTargetLang.value
+    }, updated.id || props.userId)
+    if (!saved) {
+      toast.error?.('翻译设置保存失败')
+      return
+    }
+  }
   toast.success?.('个人信息已保存')
 }
 
@@ -112,6 +140,26 @@ async function openAdminConsole() {
             <input v-model="editableAvatar" placeholder="输入头像 URL（可选）">
             <label>昵称</label>
             <input v-model="editableName" maxlength="40">
+
+            <section v-if="showTranslationSettings" class="user-drawer__translation">
+              <div class="user-drawer__translation-title">消息翻译</div>
+              <label class="user-drawer__switch-row">
+                <span>
+                  <strong>自动翻译收到的消息</strong>
+                  <small>开启后，新收到的文本消息会自动翻译</small>
+                </span>
+                <input v-model="translationEnabled" type="checkbox" class="user-drawer__switch-input">
+                <span class="user-drawer__switch" aria-hidden="true"></span>
+              </label>
+              <label for="translation-target-lang">默认翻译语言</label>
+              <select id="translation-target-lang" v-model="translationTargetLang">
+                <option
+                  v-for="language in TRANSLATION_LANGUAGES"
+                  :key="language.value"
+                  :value="language.value"
+                >{{ language.label }}</option>
+              </select>
+            </section>
             <button type="button" class="user-drawer__save" @click="saveProfile">保存修改</button>
           </div>
 
@@ -233,7 +281,8 @@ async function openAdminConsole() {
   color: #6B7280;
   font-size: 12px;
 }
-.user-drawer__edit-form input {
+.user-drawer__edit-form input,
+.user-drawer__edit-form select {
   width: 100%;
   height: 34px;
   padding: 0 10px;
@@ -243,10 +292,59 @@ async function openAdminConsole() {
   font: inherit;
   outline: none;
 }
-.user-drawer__edit-form input:focus {
+.user-drawer__edit-form input:focus,
+.user-drawer__edit-form select:focus {
   border-color: #3B82F6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, .12);
 }
+.user-drawer__edit-form select { background: #fff; }
+.user-drawer__translation {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding-top: 16px;
+  margin-top: 8px;
+  border-top: 1px solid #F0F2F5;
+}
+.user-drawer__translation-title {
+  color: #1F2937;
+  font-size: 14px;
+  font-weight: 600;
+}
+.user-drawer__switch-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+.user-drawer__switch-row strong,
+.user-drawer__switch-row small { display: block; }
+.user-drawer__switch-row strong { color: #374151; font-size: 13px; font-weight: 500; }
+.user-drawer__switch-row small { margin-top: 3px; color: #9CA3AF; font-size: 11px; line-height: 1.4; }
+.user-drawer__switch-input { position: absolute; opacity: 0; pointer-events: none; }
+.user-drawer__switch {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  border-radius: 999px;
+  background: #D1D5DB;
+  transition: background .15s;
+}
+.user-drawer__switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .2);
+  transition: transform .15s;
+}
+.user-drawer__switch-input:checked + .user-drawer__switch { background: #3B82F6; }
+.user-drawer__switch-input:checked + .user-drawer__switch::after { transform: translateX(16px); }
 .user-drawer__save {
   height: 34px;
   margin-top: 7px;

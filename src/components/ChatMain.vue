@@ -20,6 +20,16 @@ import TicketTransferDialog from './TicketTransferDialog.vue'
 import { fetchTransferCandidates } from '../services/agent'
 import ReplyQuote from './ReplyQuote.vue'
 import Avatar from './Avatar.vue'
+import emitter from '../common/emitter'
+import { EVENT_NAME } from '../common/enum'
+import { isElectron } from '../common/platform'
+import userService from '../services/user'
+import { getTranslationSettings } from '../services/translation-settings'
+import {
+  hydrateMessageTranslation,
+  isTranslatableMessage,
+  translateMessage
+} from '../services/message-translation'
 
 const props = defineProps({
   conversation: {
@@ -148,6 +158,45 @@ const messageMenuState = ref({ show: false, x: 0, y: 0, message: null })
 const transferState = ref({ show: false, message: null, targets: [] })
 
 const juggle = im.getCurrent()
+const translationSettings = reactive(getTranslationSettings())
+// Product scope is determined by the Electron shell. Do not gate the UI with
+// SDK `isDesktop()`: some Electron hosts expose updateMessageAttr through the
+// runtime provider without that diagnostic returning true.
+const translationAvailable = computed(() => isElectron())
+
+function applyTranslationVisibility(message) {
+  if (message) message.translationVisible = translationSettings.enabled
+}
+
+function hydrateTranslation(message) {
+  if (!translationAvailable.value || !message) return null
+  applyTranslationVisibility(message)
+  return hydrateMessageTranslation(message, translationSettings.targetLang)
+}
+
+async function requestMessageTranslation(message, { force = false, silent = false } = {}) {
+  if (!translationAvailable.value || !isTranslatableMessage(message)) return
+  applyTranslationVisibility(message)
+  // A manual action (right-click/retry) is an explicit request to see this
+  // message's translation even when automatic incoming translation is off.
+  if (force) message.translationVisible = true
+  try {
+    await translateMessage(message, translationSettings.targetLang, { client: juggle, force })
+  } catch (error) {
+    if (!silent) toast.error(error?.msg || error?.message || '翻译失败')
+  }
+}
+
+function onTranslationSettingsChanged(payload) {
+  const userId = String(userService.getCurrentUser()?.id || '')
+  if (payload?.userId && String(payload.userId) !== userId) return
+  const settings = payload?.settings || getTranslationSettings(userId)
+  Object.assign(translationSettings, settings)
+  for (const message of imMessages) {
+    applyTranslationVisibility(message)
+    if (settings.enabled) hydrateMessageTranslation(message, settings.targetLang)
+  }
+}
 
 async function ensurePeerStatus() {
   if (props.isGroup) return
@@ -373,6 +422,7 @@ async function loadHistory() {
     const incoming = result?.messages || []
     const isFinished = !!result?.isFinished
     for (const m of incoming) {
+      hydrateTranslation(m)
       if (!imMessages.find((x) => x.messageId && x.messageId === m.messageId)) {
         if (m.conversationType === ConversationType.GROUP) {
           m.readPercent = 0
@@ -869,6 +919,14 @@ function onMessageMenuSelect({ key, message }) {
       replyTo.value = message
       break
     }
+    case 'translate': {
+      requestMessageTranslation(message, { force: true })
+      break
+    }
+    case 'show-translation': {
+      if (translationSettings.enabled) message.translationVisible = true
+      break
+    }
 case 'transfer': {
       openTransferDialog(message)
       break
@@ -1095,6 +1153,13 @@ function onMessageReceived(message) {
   // "onMessageReceived 根本没被 SDK 推" / "isCurrentConversation 把消息过滤了"
   // / "走到 else if 但没 emit" 这类问题。稳定后可以删。
   if (!isCurrentConversation(message)) {
+    // ChatMain remains mounted while another conversation receives a message.
+    // Electron still translates that incoming text and persists its local
+    // attribute, so opening the conversation later can hydrate it immediately.
+    if (!message.isSender && !message.isStatus && message.name !== MSG_NAME.TYPING_NTF &&
+        translationSettings.enabled && isTranslatableMessage(message)) {
+      requestMessageTranslation(message, { silent: true })
+    }
     console.log('[ChatMain] onMessageReceived ignored (not current conversation)', {
       msgId: message.messageId, tid: message.tid,
       msgCid: message.conversationId, msgCtype: message.conversationType
@@ -1122,6 +1187,11 @@ function onMessageReceived(message) {
   } else {
     // New incoming — push to the end (bottom of oldest-first list).
     imMessages.push(message)
+  }
+  const activeMessage = idx >= 0 ? imMessages[idx] : message
+  hydrateTranslation(activeMessage)
+  if (!isSelfReceipt && translationSettings.enabled && isTranslatableMessage(activeMessage)) {
+    requestMessageTranslation(activeMessage, { silent: true })
   }
   // Thinking bubble: show when the other party sends a message (agent needs
   // to process and respond). Clear when our own message arrives (e.g. the
@@ -1199,6 +1269,7 @@ function onMessageUpdated(notify) {
       isUpdated: true,
       content: notify.content
     })
+    delete imMessages[idx].translation
   }
 }
 
@@ -1284,6 +1355,7 @@ watch(
 
 onMounted(() => {
   ensurePeerStatus()
+  emitter.on(EVENT_NAME.TRANSLATION_SETTINGS_CHANGED, onTranslationSettingsChanged)
   if (!juggle?.on) return
   juggle.on(Event.MESSAGE_RECEIVED, onMessageReceived)
   juggle.on(Event.MESSAGE_RECALLED, onMessageRecalled)
@@ -1297,6 +1369,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   clearPeerTyping()
   sendEndTyping()
+  emitter.off(EVENT_NAME.TRANSLATION_SETTINGS_CHANGED, onTranslationSettingsChanged)
   if (!juggle?.off) return
   juggle.off(Event.MESSAGE_RECEIVED, onMessageReceived)
   juggle.off(Event.MESSAGE_RECALLED, onMessageRecalled)
@@ -1509,6 +1582,7 @@ defineExpose({ notifyTransferResult, openTransfer })
             @context="onMessageContext"
             @reaction="onMessageReaction"
             @preview="onImagePreview"
+            @translation-retry="(message) => requestMessageTranslation(message, { force: true })"
           />
           <!-- Thinking bubble: shown while waiting for agent reply (AI辅助模式) -->
           <div
@@ -1599,6 +1673,9 @@ defineExpose({ notifyTransferResult, openTransfer })
       :model-value="composerText"
       :placeholder="conversation ? `发送消息给 ${conversation.name || ''}` : '输入消息...'"
       :send-disabled="!isAssignedConversation && !isContactChat"
+      :translation-enabled="translationAvailable"
+      :translations-visible="translationSettings.enabled"
+      :default-target-lang="translationSettings.targetLang"
       @update:model-value="onComposerInput"
       @focus="onComposerFocus"
       @blur="sendEndTyping"
@@ -1618,6 +1695,7 @@ defineExpose({ notifyTransferResult, openTransfer })
       :x="messageMenuState.x"
       :y="messageMenuState.y"
       :align="messageMenuState.align"
+      :translation-enabled="translationAvailable"
       @select="onMessageMenuSelect"
       @close="onMessageMenuClose"
     />

@@ -13,6 +13,9 @@
 // value is reset after each emit so the same file can be re-selected.
 
 import { ref, watch, nextTick } from 'vue'
+import im from '../common/im'
+import { TRANSLATION_LANGUAGES } from '../services/translation-settings'
+import { translateText } from '../services/message-translation'
 
 const props = defineProps({
   modelValue: {
@@ -40,7 +43,9 @@ const props = defineProps({
   accept: {
     type: String,
     default: '*/*'
-  }
+  },
+  translationEnabled: { type: Boolean, default: false },
+  defaultTargetLang: { type: String, default: 'zh-CN' }
 })
 
 const emit = defineEmits(['update:modelValue', 'send', 'attach', 'focus', 'blur'])
@@ -48,15 +53,25 @@ const emit = defineEmits(['update:modelValue', 'send', 'attach', 'focus', 'blur'
 const text = ref(props.modelValue)
 const fileInput = ref(null)
 const textareaRef = ref(null)
+const targetLang = ref(props.defaultTargetLang)
+const translationPreview = ref('')
+const translationLoading = ref(false)
+const translationError = ref('')
+let translationRequestId = 0
 
 watch(
   () => props.modelValue,
   (val) => {
     if (val !== text.value) text.value = val
+    if (!val) clearTranslationState()
     autoResize()
   }
 )
 watch(text, (val) => emit('update:modelValue', val))
+watch(() => props.defaultTargetLang, (value) => {
+  targetLang.value = value || 'zh-CN'
+  clearTranslationState()
+})
 
 function autoResize() {
   nextTick(() => {
@@ -69,7 +84,50 @@ function autoResize() {
 
 function onInput(e) {
   text.value = e.target.value
+  clearTranslationState()
   autoResize()
+}
+
+async function onTranslateClick() {
+  const source = text.value.trim()
+  if (!source || translationLoading.value) return
+  const requestId = ++translationRequestId
+  const requestedLang = targetLang.value
+  translationLoading.value = true
+  translationPreview.value = ''
+  translationError.value = ''
+  try {
+    const translated = await translateText(source, requestedLang, {
+      client: im.getCurrent()
+    })
+    if (requestId !== translationRequestId || text.value.trim() !== source || targetLang.value !== requestedLang) return
+    translationPreview.value = translated
+  } catch (error) {
+    if (requestId !== translationRequestId) return
+    translationError.value = error?.msg || error?.message || '翻译失败'
+  } finally {
+    if (requestId === translationRequestId) translationLoading.value = false
+  }
+}
+
+function useTranslation() {
+  if (!translationPreview.value) return
+  text.value = translationPreview.value
+  translationPreview.value = ''
+  translationError.value = ''
+  autoResize()
+  nextTick(() => textareaRef.value?.focus())
+}
+
+function cancelTranslation() {
+  clearTranslationState()
+}
+
+function clearTranslationState() {
+  translationRequestId += 1
+  translationPreview.value = ''
+  translationError.value = ''
+  translationLoading.value = false
 }
 
 function onKeydown(e) {
@@ -92,6 +150,7 @@ function submit() {
   if (!value) return
   emit('send', value)
   text.value = ''
+  clearTranslationState()
   nextTick(() => {
     const el = textareaRef.value
     if (el) {
@@ -123,6 +182,20 @@ function onFileChange(e) {
 <template>
   <div class="jm-sender">
     <div class="jm-sender__input-wrap">
+      <div v-if="translationEnabled && (translationLoading || translationPreview || translationError)" class="jm-sender__translation-preview">
+        <div v-if="translationLoading" class="jm-sender__translation-loading">翻译中...</div>
+        <template v-else-if="translationPreview">
+          <div class="jm-sender__translation-text"><span>译</span>{{ translationPreview }}</div>
+          <div class="jm-sender__translation-actions">
+            <button type="button" @click="useTranslation">使用译文</button>
+            <button type="button" class="is-secondary" @click="cancelTranslation">取消</button>
+          </div>
+        </template>
+        <div v-else class="jm-sender__translation-error">
+          {{ translationError }}
+          <button type="button" @click="onTranslateClick">重试</button>
+        </div>
+      </div>
       <textarea
         ref="textareaRef"
         class="jm-sender__input"
@@ -172,12 +245,24 @@ function onFileChange(e) {
           :accept="accept"
           @change="onFileChange"
         />
-        <button
-          class="jm-sender__send"
-          :disabled="disabled || sendDisabled || !text.trim()"
-          type="button"
-          @click="onSendClick"
-        >发送</button>
+        <div class="jm-sender__actions">
+          <select v-if="translationEnabled" v-model="targetLang" class="jm-sender__language" title="翻译目标语言">
+            <option v-for="language in TRANSLATION_LANGUAGES" :key="language.value" :value="language.value">{{ language.label }}</option>
+          </select>
+          <button
+            v-if="translationEnabled"
+            class="jm-sender__translate"
+            :disabled="disabled || !text.trim() || translationLoading"
+            type="button"
+            @click="onTranslateClick"
+          >{{ translationLoading ? '翻译中' : '翻译' }}</button>
+          <button
+            class="jm-sender__send"
+            :disabled="disabled || sendDisabled || !text.trim()"
+            type="button"
+            @click="onSendClick"
+          >发送</button>
+        </div>
       </div>
     </div>
   </div>
@@ -246,6 +331,18 @@ function onFileChange(e) {
   display: flex;
   gap: 2px;
 }
+.jm-sender__actions { display: flex; align-items: center; gap: 6px; }
+.jm-sender__language { max-width: 120px; height: 30px; padding: 0 7px; border: 1px solid var(--border); border-radius: 7px; background: #fff; color: var(--text-2); font: inherit; font-size: 12px; outline: none; }
+.jm-sender__translate { height: 30px; padding: 0 12px; border: 1px solid #BFDBFE; border-radius: 7px; background: #EFF6FF; color: #2563EB; font: inherit; font-size: 12px; cursor: pointer; }
+.jm-sender__translate:disabled { opacity: .45; cursor: not-allowed; }
+.jm-sender__translation-preview { margin: 0 2px 4px; padding: 9px 10px; border: 1px solid #DBEAFE; border-radius: 8px; background: #F8FBFF; font-size: 13px; }
+.jm-sender__translation-loading { color: var(--text-3); }
+.jm-sender__translation-text { display: flex; gap: 7px; white-space: pre-wrap; word-break: break-word; color: var(--text-1); }
+.jm-sender__translation-text span { flex: 0 0 auto; width: 18px; height: 18px; border-radius: 4px; background: #EAF2FF; color: #2563EB; font-size: 10px; font-weight: 600; line-height: 18px; text-align: center; }
+.jm-sender__translation-actions { display: flex; gap: 8px; margin-top: 8px; }
+.jm-sender__translation-actions button, .jm-sender__translation-error button { padding: 3px 8px; border: 0; border-radius: 5px; background: #2563EB; color: #fff; font: inherit; font-size: 11px; cursor: pointer; }
+.jm-sender__translation-actions .is-secondary { background: transparent; color: var(--text-3); }
+.jm-sender__translation-error { display: flex; align-items: center; gap: 8px; color: #DC2626; }
 
 .jm-sender__tool-btn {
   width: 28px;

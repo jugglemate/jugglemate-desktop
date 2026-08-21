@@ -7,7 +7,8 @@ export const EVENT_NAME = {
   SEND_MESSAGE: 'on_send_message',
   ON_GROUP_MEMBER_ADDED: 'on_group_member_added',
   ON_GROUP_MEMBER_REMOVED: 'on_group_member_removed',
-  ON_APP_LANGUAGE_CHANGED: 'on_app_language_changed'
+  ON_APP_LANGUAGE_CHANGED: 'on_app_language_changed',
+  TRANSLATION_SETTINGS_CHANGED: 'translation_settings_changed'
 }
 
 // Storage Keys
@@ -15,7 +16,8 @@ export const STORAGE = {
   PREFIX: 'hubchat',
   USER_TOKEN: 'user_auth_token',
   USERS: 'users_auth',
-  SERVER_SETTING: 'server_setting'
+  SERVER_SETTING: 'server_setting',
+  TRANSLATION_SETTINGS: 'translation_settings'
 }
 
 // Response Codes
