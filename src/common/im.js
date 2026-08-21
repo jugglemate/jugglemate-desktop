@@ -702,6 +702,10 @@ function formatTicketAssignPreview(rawContent) {
     // 已转为人工接待
     return '已转为人工接待'
   }
+  if (payload.assign_type === 4) {
+    // 工单重新打开；该类型不携带 operator / assignee。
+    return '工单已重启'
+  }
   // 其他未知类型
   if (op && ae) return `由 ${op} 分配给 ${ae}`
   if (ae) return `已分配给 ${ae}`

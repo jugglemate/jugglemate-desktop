@@ -2,7 +2,8 @@
 // Ticket assign system notification.
 // Displayed as a centered muted pill (no avatar, no sender), matching the
 // visual language of MessageRecall / MessageTimeline system rows.
-// assign_type: 0 = self-claim, 1 = assigned by others.
+// assign_type: 0 = self-claim, 1 = assigned by others,
+// 3 = human takeover, 4 = ticket restarted.
 
 import { computed } from 'vue'
 
@@ -42,6 +43,10 @@ const text = computed(() => {
   if (assignType.value === 3) {
     // 已转为人工接待
     return '已转为人工接待'
+  }
+  if (assignType.value === 4) {
+    // 工单重新打开；该类型不携带 operator / assignee。
+    return '工单已重启'
   }
   // 其他未知类型兜底
   if (op && ae) return `由 ${op} 分配给 ${ae}`
