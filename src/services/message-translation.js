@@ -1,5 +1,6 @@
 import im from '../common/im'
 import { isElectron } from '../common/platform'
+import { SERVER_PATH, post } from './api'
 
 export const TRANSLATION_STATUS = Object.freeze({
   PENDING: 'pending',
@@ -11,6 +12,19 @@ export const TRANSLATION_STATUS = Object.freeze({
 const ATTRIBUTE_LIMIT = 1000
 const DEFAULT_TIMEOUT = 15000
 const inflight = new Map()
+
+const API_LANGUAGE_NAMES = Object.freeze({
+  'zh-CN': '中文',
+  'zh-TW': '繁体中文',
+  en: 'English',
+  es: 'Español',
+  fr: 'Français',
+  de: 'Deutsch',
+  ja: '日本語',
+  ko: '한국어',
+  pt: 'Português',
+  ru: 'Русский'
+})
 
 export function getMessageText(message) {
   const content = message?.content
@@ -74,7 +88,17 @@ export function hydrateMessageTranslation(message, targetLang) {
 }
 
 async function persistTranslation(client, message, targetLang, translatedText) {
-  if (!isElectron() || !message?.tid || typeof client?.updateMessageAttr !== 'function') {
+  // Electron only identifies the product shell; it does not mean the IM SDK
+  // selected its PC provider. The Web provider also exposes
+  // updateMessageAttr(), but calling that stub rejects with SDK error 25010.
+  // Persist only when JGChatPCClient was actually injected and selected.
+  if (
+    !isElectron() ||
+    !message?.tid ||
+    typeof client?.updateMessageAttr !== 'function' ||
+    typeof client?.isDesktop !== 'function' ||
+    !client.isDesktop()
+  ) {
     return false
   }
   const attribute = parseAttribute(message.attribute)
@@ -108,19 +132,40 @@ function withTimeout(promise, timeoutMs) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
 }
 
+async function translateViaApi(source, targetLang, timeoutMs = DEFAULT_TIMEOUT) {
+  const result = await withTimeout(post(SERVER_PATH.LLM_TRANSLATE, {
+    source,
+    target_language: API_LANGUAGE_NAMES[targetLang] || targetLang
+  }), timeoutMs)
+  if (Number(result?.code) !== 0) {
+    const error = new Error(result?.msg || '翻译接口调用失败')
+    error.code = result?.code
+    throw error
+  }
+  const content = result?.data?.content
+  if (typeof content !== 'string' || !content.trim()) {
+    throw new Error('翻译结果为空')
+  }
+  return content
+}
+
 export async function translateText(text, targetLang, options = {}) {
   if (!isElectron()) return ''
   const value = String(text || '').trim()
   if (!value) return ''
-  const client = options.client || im.getCurrent()
-  if (!client?.translate) throw new Error('翻译服务不可用')
-  const result = await withTimeout(client.translate({
-    sourceLang: 'auto',
+  const startedAt = Date.now()
+  console.info('[translation] request', {
+    kind: 'composer',
+    transport: 'HTTP /jmate/agentapi/llm/translate',
     targetLang,
-    content: { text: value }
-  }), options.timeoutMs || DEFAULT_TIMEOUT)
-  const translated = result?.text
-  if (typeof translated !== 'string' || !translated.trim()) throw new Error('翻译结果为空')
+    contentLength: value.length
+  })
+  const translated = await translateViaApi(value, targetLang, options.timeoutMs || DEFAULT_TIMEOUT)
+  console.info('[translation] response', {
+    kind: 'composer',
+    targetLang,
+    elapsedMs: Date.now() - startedAt
+  })
   return translated
 }
 
@@ -128,7 +173,6 @@ export async function translateMessage(message, targetLang, options = {}) {
   if (!isElectron()) return null
   if (!isTranslatableMessage(message)) throw new Error('该消息不支持翻译')
   const client = options.client || im.getCurrent()
-  if (!client?.translate) throw new Error('翻译服务不可用')
 
   const cached = options.force ? null : readStoredTranslation(message, targetLang)
   if (cached) {
@@ -142,16 +186,24 @@ export async function translateMessage(message, targetLang, options = {}) {
   message.translation = { status: TRANSLATION_STATUS.PENDING, targetLang }
 
   const task = (async () => {
+    const startedAt = Date.now()
     try {
-      const result = await withTimeout(client.translate({
-        sourceLang: 'auto',
+      console.info('[translation] request', {
+        kind: 'message',
+        transport: 'HTTP /jmate/agentapi/llm/translate',
+        messageId: message?.messageId,
+        tid: message?.tid,
         targetLang,
-        content: { message: text }
-      }), options.timeoutMs || DEFAULT_TIMEOUT)
-      const translatedText = result?.message
-      if (typeof translatedText !== 'string' || !translatedText.trim()) {
-        throw new Error('翻译结果为空')
-      }
+        contentLength: text.length
+      })
+      const translatedText = await translateViaApi(text, targetLang, options.timeoutMs || DEFAULT_TIMEOUT)
+      console.info('[translation] response', {
+        kind: 'message',
+        messageId: message?.messageId,
+        tid: message?.tid,
+        targetLang,
+        elapsedMs: Date.now() - startedAt
+      })
       let persisted = false
       try {
         persisted = await persistTranslation(client, message, targetLang, translatedText)
@@ -170,6 +222,14 @@ export async function translateMessage(message, targetLang, options = {}) {
       message.translation = translation
       return translation
     } catch (error) {
+      console.warn('[translation] failed', {
+        messageId: message?.messageId,
+        tid: message?.tid,
+        targetLang,
+        elapsedMs: Date.now() - startedAt,
+        code: error?.code,
+        message: error?.msg || error?.message
+      })
       message.translation = {
         status: error?.code === 'TRANSLATION_TIMEOUT'
           ? TRANSLATION_STATUS.TIMEOUT

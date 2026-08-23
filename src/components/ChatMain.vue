@@ -159,9 +159,10 @@ const transferState = ref({ show: false, message: null, targets: [] })
 
 const juggle = im.getCurrent()
 const translationSettings = reactive(getTranslationSettings())
-// Product scope is determined by the Electron shell. Do not gate the UI with
-// SDK `isDesktop()`: some Electron hosts expose updateMessageAttr through the
-// runtime provider without that diagnostic returning true.
+// Translation is available in the Electron product shell. Persisting a
+// translation into message.attribute is separately gated by the IM SDK's
+// isDesktop() result because its Web provider only contains an unsupported
+// updateMessageAttr stub.
 const translationAvailable = computed(() => isElectron())
 
 function applyTranslationVisibility(message) {
@@ -901,9 +902,6 @@ function onMessageMenuClose() {
   // treats them as a single right-click "surface".
   messageMenuState.value.show = false
   messageMenuState.value.message = null
-  // Reset the resolved menu top so a future re-open re-measures.
-  resolvedMenuTop.value = 0
-  resolvedMenuBottom.value = 0
   menuFlipped.value = false
 }
 
@@ -945,11 +943,7 @@ case 'transfer': {
 // Quick reaction from the floating emoji pill. Closes the menu after
 // adding so the user doesn't see lingering overlays — they already got
 // the visual feedback (the bubble itself shows the reaction pill).
-// Track the right-click menu's resolved top edge so the companion
-// MessageContextEmoji overlay can dock directly above it. We measure
-// the live DOM via getBoundingClientRect in nextTick + rAF (the
-// teleport mounts first, then styles resolve) and stash the value in
-// `resolvedMenuTop`. The watcher resets it back to 0 on close.
+// Tracks whether the context menu was flipped to stay in the viewport.
 const menuFlipped = ref(false)
 
 function onQuickReaction({ name, message }) {
@@ -1188,7 +1182,11 @@ function onMessageReceived(message) {
     // New incoming — push to the end (bottom of oldest-first list).
     imMessages.push(message)
   }
-  const activeMessage = idx >= 0 ? imMessages[idx] : message
+  // Always continue with the object read back from the reactive array. Vue
+  // wraps a newly pushed raw SDK message in a Proxy; mutating the original
+  // `message` after an async translation resolves does not notify the view,
+  // which left the bubble visually stuck at "翻译中..." despite a response.
+  const activeMessage = idx >= 0 ? imMessages[idx] : imMessages[imMessages.length - 1]
   hydrateTranslation(activeMessage)
   if (!isSelfReceipt && translationSettings.enabled && isTranslatableMessage(activeMessage)) {
     requestMessageTranslation(activeMessage, { silent: true })

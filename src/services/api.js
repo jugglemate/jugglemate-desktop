@@ -34,6 +34,10 @@ const SERVER_PATH = {
   //   body: { sessionId }
   //   resp.data: { sessionId, agentId: '', binded: false }
   AGENT_UNBIND_SESSION: buildUrl('/jmate/agentapi/agents/sessions/unbind'),
+  // LLM 翻译：POST body { source, target_language }
+  // 鉴权由 request.js 统一注入 AppKey + Authorization。
+  // resp: { code: 0, data: { content: string } }
+  LLM_TRANSLATE: buildUrl('/jmate/agentapi/llm/translate'),
   AGENT_MYBOTS: buildUrl('/jmate/aibots/mybots'),
 
   // Ticket APIs
