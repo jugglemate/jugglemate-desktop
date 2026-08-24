@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "electron:dev": "ELECTRON_SKIP_BINARY_DOWNLOAD=true node node_modules/electron/cli.js .",
+    "electron:dev": "electron .",
     "electron:build": "npm run build && ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ electron-builder"
   },
   "build": {
@@ -49,12 +49,12 @@
     "ws": "^8.21.0"
   },
   "devDependencies": {
-    "electron": "^35.7.5",
     "@vitejs/plugin-vue": "^6.0.6",
+    "cross-env": "^7.0.3",
+    "electron": "35.7.5",
     "electron-builder": "^25.1.8",
     "vite": "^8.0.8",
-    "vite-plugin-vue-devtools": "^8.1.1",
-    "cross-env": "^7.0.3"
+    "vite-plugin-vue-devtools": "^8.1.1"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"

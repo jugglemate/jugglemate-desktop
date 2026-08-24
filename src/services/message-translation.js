@@ -50,12 +50,42 @@ export function sourceHash(text = '') {
   return (hash >>> 0).toString(36)
 }
 
-function parseAttribute(raw) {
-  if (!raw || typeof raw !== 'string') return {}
+function messageIdentity(message) {
+  return {
+    messageId: message?.messageId,
+    tid: message?.tid,
+    conversationType: message?.conversationType,
+    conversationId: message?.conversationId
+  }
+}
+
+function attributeSummary(raw) {
+  return {
+    present: raw !== undefined && raw !== null && raw !== '',
+    type: Array.isArray(raw) ? 'array' : typeof raw,
+    length: typeof raw === 'string' ? raw.length : undefined
+  }
+}
+
+function parseAttribute(raw, context = {}) {
+  if (!raw) return {}
+  if (typeof raw === 'object' && !Array.isArray(raw)) return { ...raw }
+  if (typeof raw !== 'string') {
+    console.warn('[translation][attribute] unsupported value', {
+      ...context,
+      ...attributeSummary(raw)
+    })
+    return {}
+  }
   try {
     const parsed = JSON.parse(raw)
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
-  } catch {
+  } catch (error) {
+    console.warn('[translation][attribute] invalid JSON', {
+      ...context,
+      ...attributeSummary(raw),
+      error: error?.message
+    })
     return {}
   }
 }
@@ -63,11 +93,46 @@ function parseAttribute(raw) {
 export function readStoredTranslation(message, targetLang) {
   if (!isElectron()) return null
   const text = getMessageText(message)
-  const translation = parseAttribute(message?.attribute)?.translation
-  if (!translation || translation.version !== 1) return null
-  if (translation.targetLang !== targetLang) return null
-  if (translation.sourceHash !== sourceHash(text)) return null
-  if (typeof translation.translatedText !== 'string' || !translation.translatedText) return null
+  const identity = messageIdentity(message)
+  const rawAttribute = message?.attribute
+  const attribute = parseAttribute(rawAttribute, identity)
+  const translation = attribute.translation
+  const summary = {
+    ...identity,
+    ...attributeSummary(rawAttribute),
+    keys: Object.keys(attribute),
+    targetLang
+  }
+  if (!translation) {
+    console.debug('[translation][attribute] no stored translation', summary)
+    return null
+  }
+  if (translation.version !== 1) {
+    console.warn('[translation][attribute] unsupported translation version', {
+      ...summary,
+      version: translation.version
+    })
+    return null
+  }
+  if (translation.targetLang !== targetLang) {
+    console.debug('[translation][attribute] target language mismatch', {
+      ...summary,
+      storedTargetLang: translation.targetLang
+    })
+    return null
+  }
+  if (translation.sourceHash !== sourceHash(text)) {
+    console.warn('[translation][attribute] source hash mismatch', summary)
+    return null
+  }
+  if (typeof translation.translatedText !== 'string' || !translation.translatedText) {
+    console.warn('[translation][attribute] stored translated text is empty', summary)
+    return null
+  }
+  console.info('[translation][attribute] restored', {
+    ...summary,
+    translatedAt: translation.translatedAt
+  })
   return {
     status: TRANSLATION_STATUS.COMPLETED,
     targetLang,
@@ -92,16 +157,20 @@ async function persistTranslation(client, message, targetLang, translatedText) {
   // selected its PC provider. The Web provider also exposes
   // updateMessageAttr(), but calling that stub rejects with SDK error 25010.
   // Persist only when JGChatPCClient was actually injected and selected.
-  if (
-    !isElectron() ||
-    !message?.tid ||
-    typeof client?.updateMessageAttr !== 'function' ||
-    typeof client?.isDesktop !== 'function' ||
-    !client.isDesktop()
-  ) {
+  const diagnostics = {
+    ...messageIdentity(message),
+    isElectron: isElectron(),
+    hasTid: !!message?.tid,
+    hasUpdateMessageAttr: typeof client?.updateMessageAttr === 'function',
+    hasIsDesktop: typeof client?.isDesktop === 'function',
+    sdkDesktop: typeof client?.isDesktop === 'function' ? client.isDesktop() : false
+  }
+  if (!diagnostics.isElectron || !diagnostics.hasTid ||
+      !diagnostics.hasUpdateMessageAttr || !diagnostics.sdkDesktop) {
+    console.warn('[translation][attribute] persistence skipped', diagnostics)
     return false
   }
-  const attribute = parseAttribute(message.attribute)
+  const attribute = parseAttribute(message.attribute, messageIdentity(message))
   attribute.translation = {
     version: 1,
     sourceHash: sourceHash(getMessageText(message)),
@@ -110,9 +179,26 @@ async function persistTranslation(client, message, targetLang, translatedText) {
     translatedAt: Date.now()
   }
   const serialized = JSON.stringify(attribute)
-  if (serialized.length > ATTRIBUTE_LIMIT) return false
-  await client.updateMessageAttr({ tid: message.tid, attribute: serialized })
+  if (serialized.length > ATTRIBUTE_LIMIT) {
+    console.warn('[translation][attribute] persistence skipped: size limit', {
+      ...diagnostics,
+      attributeLength: serialized.length,
+      attributeLimit: ATTRIBUTE_LIMIT
+    })
+    return false
+  }
+  console.info('[translation][attribute] updateMessageAttr request', {
+    ...diagnostics,
+    attributeLength: serialized.length,
+    attributeKeys: Object.keys(attribute)
+  })
+  const result = await client.updateMessageAttr({ tid: message.tid, attribute: serialized })
   message.attribute = serialized
+  console.info('[translation][attribute] updateMessageAttr success', {
+    ...diagnostics,
+    result,
+    localAttributeLength: message.attribute.length
+  })
   return true
 }
 

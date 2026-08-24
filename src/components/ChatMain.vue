@@ -419,8 +419,20 @@ async function loadHistory() {
       time: oldest ? oldest.sentTime : 0
     }
     const result = await juggle.getMessages(params)
-    console.log('[ChatMain] loadHistory', params, result)
     const incoming = result?.messages || []
+    console.info('[ChatMain][history] getMessages response', {
+      params,
+      count: incoming.length,
+      isFinished: !!result?.isFinished,
+      sdkDesktop: typeof juggle?.isDesktop === 'function' ? juggle.isDesktop() : false,
+      attributes: incoming.map((message) => ({
+        messageId: message?.messageId,
+        tid: message?.tid,
+        hasAttribute: message?.attribute !== undefined && message?.attribute !== null && message?.attribute !== '',
+        attributeType: Array.isArray(message?.attribute) ? 'array' : typeof message?.attribute,
+        attributeLength: typeof message?.attribute === 'string' ? message.attribute.length : undefined
+      }))
+    })
     const isFinished = !!result?.isFinished
     for (const m of incoming) {
       hydrateTranslation(m)
