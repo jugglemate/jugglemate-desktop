@@ -119,6 +119,8 @@ const composerText = ref('')
 const replyTo = ref(null)
 const peerTyping = ref(false)
 const peerStatusLoading = ref(false)
+const isDraggingFiles = ref(false)
+let fileDragDepth = 0
 // peer userId：只能取 customers/info 返回的 source_id（IM 端的真实 user id）。
 // 不做兼容 —— conversationId 是 chat 会话 id，跟 IM 端的 user id 不是一回事。
 // source_id 还没拿到时 peerUserId 为空，peerStatus 走「状态未知」。
@@ -700,6 +702,62 @@ function onResend(message) {
 // ---------------------------------------------------------------------------
 // Attachments
 // ---------------------------------------------------------------------------
+
+function dragContainsFiles(event) {
+  return Array.from(event.dataTransfer?.types || []).includes('Files')
+}
+
+function onFileDragEnter(event) {
+  if (!dragContainsFiles(event)) return
+  event.preventDefault()
+  fileDragDepth += 1
+  isDraggingFiles.value = true
+}
+
+function onFileDragOver(event) {
+  if (!dragContainsFiles(event)) return
+  event.preventDefault()
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+}
+
+function onFileDragLeave(event) {
+  if (!isDraggingFiles.value) return
+  event.preventDefault()
+  fileDragDepth = Math.max(0, fileDragDepth - 1)
+  if (fileDragDepth === 0) isDraggingFiles.value = false
+}
+
+function resetFileDragState() {
+  fileDragDepth = 0
+  isDraggingFiles.value = false
+}
+
+function droppedFiles(dataTransfer) {
+  const items = Array.from(dataTransfer?.items || [])
+  const fileItems = items.filter((item) => {
+    if (item.kind !== 'file') return false
+    // Directory drops are not valid IM attachments. Electron/Chromium exposes
+    // this entry API even though it is not part of the standard File API.
+    const entry = item.webkitGetAsEntry?.()
+    return !entry || entry.isFile
+  })
+  if (items.some((item) => item.kind === 'file')) {
+    return fileItems.map((item) => item.getAsFile()).filter(Boolean)
+  }
+  return Array.from(dataTransfer?.files || [])
+}
+
+async function onFileDrop(event) {
+  if (!dragContainsFiles(event)) return
+  event.preventDefault()
+  const files = droppedFiles(event.dataTransfer)
+  resetFileDragState()
+  if (files.length === 0) return
+
+  // Start every upload immediately. Each file still uses onAttach so picker
+  // and drag-and-drop share message classification, progress and error states.
+  await Promise.allSettled(files.map((file) => onAttach({ file })))
+}
 
 async function onAttach({ file }) {
   if (!file) return
@@ -1359,6 +1417,7 @@ watch(
     ],
   () => {
     imMessages.splice(0, imMessages.length)
+    resetFileDragState()
     isHistoryFinished.value = false
     replyTo.value = null
     clearPeerTyping()
@@ -1386,6 +1445,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  resetFileDragState()
   clearPeerTyping()
   sendEndTyping()
   emitter.off(EVENT_NAME.TRANSLATION_SETTINGS_CHANGED, onTranslationSettingsChanged)
@@ -1463,7 +1523,30 @@ defineExpose({ notifyTransferResult, openTransfer })
 </script>
 
 <template>
-  <main class="tyn-chat-main" :class="{ 'group-chat': isGroup }">
+  <main
+    class="tyn-chat-main"
+    :class="{ 'group-chat': isGroup }"
+    @dragenter="onFileDragEnter"
+    @dragover="onFileDragOver"
+    @dragleave="onFileDragLeave"
+    @drop="onFileDrop"
+  >
+    <div
+      v-if="isDraggingFiles"
+      class="jm-file-drop-overlay"
+      role="status"
+      aria-live="polite"
+    >
+      <div class="jm-file-drop-overlay__card">
+        <svg class="jm-file-drop-overlay__icon" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 16V4" />
+          <path d="m7 9 5-5 5 5" />
+          <path d="M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" />
+        </svg>
+        <strong>松开发送文件</strong>
+        <span>支持图片、视频及其他文件，可一次拖入多个</span>
+      </div>
+    </div>
     <!-- Chat Header -->
     <div v-if="conversation || isGroup" class="tyn-chat-header">
       <div class="tyn-chat-header__info">
@@ -1758,6 +1841,47 @@ defineExpose({ notifyTransferResult, openTransfer })
 </template>
 
 <style scoped>
+.tyn-chat-main {
+  position: relative;
+}
+
+.jm-file-drop-overlay {
+  position: absolute;
+  inset: 8px;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--primary);
+  border-radius: var(--r-lg);
+  background: rgba(242, 248, 255, 0.94);
+  color: var(--primary);
+  pointer-events: none;
+  backdrop-filter: blur(2px);
+}
+
+.jm-file-drop-overlay__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 24px 32px;
+  text-align: center;
+}
+
+.jm-file-drop-overlay__icon {
+  margin-bottom: 2px;
+}
+
+.jm-file-drop-overlay__card strong {
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.jm-file-drop-overlay__card span {
+  color: var(--text-2);
+  font-size: 12px;
+}
+
 .jm-messages {
   flex: 1;
   min-height: 0;
