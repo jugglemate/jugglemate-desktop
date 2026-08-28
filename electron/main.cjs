@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain, shell } = require('electron')
+const JMain = require('jugglechat-electron/main')
 const path = require('path')
 const http = require('http')
 const fs = require('fs')
@@ -175,7 +176,10 @@ async function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
-      nodeIntegration: false
+      // SDK 在 preload 中通过 contextBridge 暴露 JGChatPCClient，页面无需 Node 权限。
+      nodeIntegration: false,
+      // 第三方 preload 依赖常规 Node require，不能运行在 sandboxed preload 中。
+      sandbox: false
     }
   })
 
@@ -248,11 +252,13 @@ async function createWindow() {
   })
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   if (process.platform === 'darwin') {
     app.dock.setIcon(path.join(__dirname, '../build/icon.png'))
   }
-  return createWindow()
+  // 先注册 SDK 的 IPC handlers，再加载会调用这些 handlers 的渲染页面。
+  JMain.init()
+  await createWindow()
 })
 
 app.on('window-all-closed', () => {

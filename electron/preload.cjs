@@ -1,4 +1,5 @@
 const { contextBridge, ipcRenderer } = require('electron')
+require('jugglechat-electron/render')
 
 contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,

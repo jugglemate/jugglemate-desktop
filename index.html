@@ -2,6 +2,12 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8">
+    <!--
+      JuggleIM 1.9.13 的 protobuf 运行时使用动态函数生成，因此目前需要
+      unsafe-eval。其余资源按应用实际使用范围收紧；待升级为无 eval 的 SDK
+      后即可移除 unsafe-eval，并彻底消除 Electron 对该项的开发期警告。
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: http: https:; media-src 'self' data: blob: http: https:; connect-src 'self' http: https: ws: wss:; object-src 'none'; base-uri 'self'; form-action 'self'">
     <link rel="icon" href="./public/logo.png">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <!-- <title>JuggleMate Agent</title> -->
