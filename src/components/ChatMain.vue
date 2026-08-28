@@ -175,12 +175,16 @@ function hydrateTranslation(message) {
   return hydrateMessageTranslation(message, translationSettings.targetLang)
 }
 
-async function requestMessageTranslation(message, { force = false, silent = false } = {}) {
+async function requestMessageTranslation(message, { force = false, silent = false, show = false } = {}) {
   if (!translationAvailable.value || !isTranslatableMessage(message)) return
   applyTranslationVisibility(message)
-  // A manual action (right-click/retry) is an explicit request to see this
-  // message's translation even when automatic incoming translation is off.
-  if (force) message.translationVisible = true
+  // A manual request (right-click / retry) is an explicit intent to view
+  // this message's translation even when automatic incoming translation is
+  // disabled. `force` additionally bypasses the stored extension (the
+  // message attribute) and re-fetches via the API; when it is false,
+  // translateMessage() restores a valid translation directly from the
+  // extension without hitting the interface.
+  if (show) message.translationVisible = true
   try {
     await translateMessage(message, translationSettings.targetLang, { client: juggle, force })
   } catch (error) {
@@ -930,7 +934,12 @@ function onMessageMenuSelect({ key, message }) {
       break
     }
     case 'translate': {
-      requestMessageTranslation(message, { force: true })
+      // On clicking translate, prefer the message's stored extension
+      // (attribute): if a valid translation for the target language already
+      // lives there, it is shown directly without calling the interface;
+      // otherwise the API is invoked. `show` guarantees the result is
+      // visible even when automatic incoming translation is disabled.
+      requestMessageTranslation(message, { force: false, show: true })
       break
     }
     case 'show-translation': {
@@ -1592,7 +1601,7 @@ defineExpose({ notifyTransferResult, openTransfer })
             @context="onMessageContext"
             @reaction="onMessageReaction"
             @preview="onImagePreview"
-            @translation-retry="(message) => requestMessageTranslation(message, { force: true })"
+            @translation-retry="(message) => requestMessageTranslation(message, { force: true, show: true })"
           />
           <!-- Thinking bubble: shown while waiting for agent reply (AI辅助模式) -->
           <div

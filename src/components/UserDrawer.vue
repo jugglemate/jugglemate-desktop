@@ -33,6 +33,7 @@ const props = defineProps({
 const emit = defineEmits(['close', 'logout'])
 
 const isAdmin = computed(() => Number(props.userRole) === 2)
+const settingsUserId = computed(() => userService.getCurrentUser()?.id || props.userId)
 const editableName = ref(props.userName)
 const editableAvatar = ref('')
 const translationEnabled = ref(false)
@@ -50,25 +51,31 @@ watch(() => props.show, (visible) => {
   }
 })
 
+// 个人信息（昵称 / 头像）在输入框失焦时自动保存，无需「保存修改」按钮。
 function saveProfile() {
   const name = editableName.value.trim()
   if (!name) return
   const updated = userService.updateCurrentUser({ name, portrait: editableAvatar.value.trim() })
   if (!updated) {
-    toast.error?.('个人信息保存失败')
+    toast.error('个人信息保存失败')
     return
   }
-  if (showTranslationSettings) {
-    const saved = saveTranslationSettings({
-      enabled: translationEnabled.value,
-      targetLang: translationTargetLang.value
-    }, updated.id || props.userId)
-    if (!saved) {
-      toast.error?.('翻译设置保存失败')
-      return
-    }
+  toast.success('个人信息已保存')
+}
+
+// 翻译设置（自动翻译开关 / 默认语言）随开关或下拉切换即时保存。
+// 元素上的 @change 只在用户交互时触发，抽屉打开时回显默认值不会误保存。
+function saveTranslation() {
+  if (!showTranslationSettings) return
+  const saved = saveTranslationSettings({
+    enabled: translationEnabled.value,
+    targetLang: translationTargetLang.value
+  }, settingsUserId.value)
+  if (!saved) {
+    toast.error('翻译设置保存失败')
+    return
   }
-  toast.success?.('个人信息已保存')
+  toast.success('翻译设置已保存')
 }
 
 // 管理员专属：跳转到外部管理后台。
@@ -137,9 +144,9 @@ async function openAdminConsole() {
 
           <div class="user-drawer__edit-form">
             <label>头像地址</label>
-            <input v-model="editableAvatar" placeholder="输入头像 URL（可选）">
+            <input v-model="editableAvatar" placeholder="输入头像 URL（可选）" @change="saveProfile">
             <label>昵称</label>
-            <input v-model="editableName" maxlength="40">
+            <input v-model="editableName" maxlength="40" @change="saveProfile">
 
             <section v-if="showTranslationSettings" class="user-drawer__translation">
               <div class="user-drawer__translation-title">消息翻译</div>
@@ -148,11 +155,11 @@ async function openAdminConsole() {
                   <strong>自动翻译收到的消息</strong>
                   <small>开启后，新收到的文本消息会自动翻译</small>
                 </span>
-                <input v-model="translationEnabled" type="checkbox" class="user-drawer__switch-input">
+                <input v-model="translationEnabled" type="checkbox" class="user-drawer__switch-input" @change="saveTranslation">
                 <span class="user-drawer__switch" aria-hidden="true"></span>
               </label>
               <label for="translation-target-lang">默认翻译语言</label>
-              <select id="translation-target-lang" v-model="translationTargetLang">
+              <select id="translation-target-lang" v-model="translationTargetLang" @change="saveTranslation">
                 <option
                   v-for="language in TRANSLATION_LANGUAGES"
                   :key="language.value"
@@ -160,7 +167,6 @@ async function openAdminConsole() {
                 >{{ language.label }}</option>
               </select>
             </section>
-            <button type="button" class="user-drawer__save" @click="saveProfile">保存修改</button>
           </div>
 
           <!-- 退出登录 -->
@@ -345,17 +351,6 @@ async function openAdminConsole() {
 }
 .user-drawer__switch-input:checked + .user-drawer__switch { background: #3B82F6; }
 .user-drawer__switch-input:checked + .user-drawer__switch::after { transform: translateX(16px); }
-.user-drawer__save {
-  height: 34px;
-  margin-top: 7px;
-  border: 0;
-  border-radius: 7px;
-  background: #3B82F6;
-  color: #fff;
-  font: inherit;
-  cursor: pointer;
-}
-.user-drawer__save:hover { background: #2563EB; }
 
 .user-drawer__menu {
   padding: 8px 0;

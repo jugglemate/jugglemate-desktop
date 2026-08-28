@@ -10,7 +10,7 @@ const EVENT = 'jm:toast'
 const messages = ref([])
 let nextId = 1
 
-function show(text, { type = 'info', duration = 2400 } = {}) {
+function show({ text, type = 'info', duration = 2400 } = {}) {
   const id = nextId++
   messages.value.push({ id, text, type })
   setTimeout(() => {
@@ -74,15 +74,12 @@ onBeforeUnmount(() => emitter.off(EVENT))
 }
 
 .jm-toast--error {
-  background: oklch(0.22 0.08 20);
   color: var(--danger);
   border-color: oklch(0.35 0.12 20);
 }
 
 .jm-toast--success {
-  background: oklch(0.20 0.06 155);
   color: var(--success);
-  border-color: oklch(0.30 0.10 155);
 }
 
 .jm-toast--info {
