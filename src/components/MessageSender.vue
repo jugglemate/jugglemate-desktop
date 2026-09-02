@@ -2,7 +2,7 @@
 // Message input row. Three responsibilities:
 //   1. Capture the draft text (so the parent can persist it as a draft)
 //   2. Enter-to-send, Shift-Enter for newline
-//   3. Expose attachment pickers (image / file / video) that emit
+//   3. Expose attachment pickers and clipboard image paste that emit
 //      `attach` with the File object. The parent decides whether to call
 //      juggle.sendImageMessage / sendFileMessage / sendVideoMessage based
 //      on the file's mime type.
@@ -177,6 +177,20 @@ function onFileChange(e) {
   // Reset so the same file can be picked again (e.g. after a send failure).
   e.target.value = ''
 }
+
+function onPaste(e) {
+  if (props.disabled) return
+  const imageFiles = Array.from(e.clipboardData?.items || [])
+    .filter((item) => item.kind === 'file' && item.type.toLowerCase().startsWith('image/'))
+    .map((item) => item.getAsFile())
+    .filter(Boolean)
+
+  // Keep ordinary text paste untouched. Clipboard screenshots/images are
+  // consumed here and immediately reuse ChatMain's normal image upload path.
+  if (imageFiles.length === 0) return
+  e.preventDefault()
+  for (const file of imageFiles) emit('attach', { file })
+}
 </script>
 
 <template>
@@ -205,6 +219,7 @@ function onFileChange(e) {
         rows="1"
         @input="onInput"
         @keydown="onKeydown"
+        @paste="onPaste"
         @focus="emit('focus')"
         @blur="emit('blur')"
       ></textarea>
