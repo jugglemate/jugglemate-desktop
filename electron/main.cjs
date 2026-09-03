@@ -73,7 +73,17 @@ const MIME_TYPES = {
 function startStaticServer(rootDir, preferredPort = 15173) {
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
-      const urlPath = req.url.split('?')[0]
+      // Browser requests percent-encode spaces and non-ASCII file names.
+      // Decode before resolving against dist so resources such as
+      // `AnimatedSticker (1).tgs` can be served in packaged builds.
+      let urlPath
+      try {
+        urlPath = decodeURIComponent(req.url.split('?')[0])
+      } catch {
+        res.writeHead(400)
+        res.end('Bad Request')
+        return
+      }
       const ext = path.extname(urlPath)
 
       // 有扩展名 → 视为静态文件；否则 → SPA fallback

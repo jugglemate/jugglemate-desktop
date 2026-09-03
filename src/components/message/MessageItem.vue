@@ -30,6 +30,7 @@ import MessageTicketReassign from './MessageTicketReassign.vue'
 import MessageCSAT from './MessageCSAT.vue'
 import MessageCSATReply from './MessageCSATReply.vue'
 import MessageTranslation from './MessageTranslation.vue'
+import MessageSticker from './MessageSticker.vue'
 
 const props = defineProps({
   message: {
@@ -158,6 +159,7 @@ function onPreview(payload) {
     <MessageFile v-else-if="kind === 'file'" :message="message" :incoming="!message?.isSender" />
     <MessageVideo v-else-if="kind === 'video'" :message="message" />
     <MessageVoice v-else-if="kind === 'voice'" :message="message" />
+    <MessageSticker v-else-if="kind === 'sticker'" :message="message" />
     <MessageContactCard v-else-if="kind === 'card'" :message="message" />
     <MessageMerge v-else-if="kind === 'merge'" :message="message" />
     <MessageCSAT v-else-if="kind === 'csat'" :message="message" />

@@ -232,6 +232,7 @@ function shortFormat(message) {
   if (!content) return ''
   if (name === MSG_NAME.TICKET_ASSIGN) return im.formatTicketAssignPreview(content)
   if (name === MSG_NAME.TICKET_REASSIGN) return im.formatTicketReassignPreview(content)
+  if (name === MSG_NAME.ANIMATION_STICKER) return '[表情]'
   if (typeof content === 'string') return content
   if (content.content !== undefined && content.content !== null) return String(content.content)
   if (content.text) return content.text

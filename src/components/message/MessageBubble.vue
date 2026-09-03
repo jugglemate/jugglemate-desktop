@@ -16,6 +16,7 @@ import im from '../../common/im'
 import messageUtils from './message-utils'
 import { sentStateLabel } from './message-utils'
 import utils from '../../common/utils'
+import { MSG_NAME } from '../../common/enum'
 
 const props = defineProps({
   message: {
@@ -60,7 +61,8 @@ const isMedia = computed(() => {
     name === MessageType.FILE ||
     name === MessageType.VIDEO ||
     name === MessageType.VOICE ||
-    name === MessageType.MERGE
+    name === MessageType.MERGE ||
+    name === MSG_NAME.ANIMATION_STICKER
   )
 })
 

@@ -12,10 +12,11 @@
 // specific picker (e.g. a "file" button) in a later phase. The picker's
 // value is reset after each emit so the same file can be re-selected.
 
-import { ref, watch, nextTick } from 'vue'
+import { ref, watch, nextTick, onBeforeUnmount } from 'vue'
 import im from '../common/im'
 import { TRANSLATION_LANGUAGES } from '../services/translation-settings'
 import { translateText } from '../services/message-translation'
+import MessageEmojiStickerPicker from './MessageEmojiStickerPicker.vue'
 
 const props = defineProps({
   modelValue: {
@@ -48,7 +49,7 @@ const props = defineProps({
   defaultTargetLang: { type: String, default: 'zh-CN' }
 })
 
-const emit = defineEmits(['update:modelValue', 'send', 'attach', 'focus', 'blur'])
+const emit = defineEmits(['update:modelValue', 'send', 'attach', 'sticker', 'focus', 'blur'])
 
 const text = ref(props.modelValue)
 const fileInput = ref(null)
@@ -57,6 +58,8 @@ const targetLang = ref(props.defaultTargetLang)
 const translationPreview = ref('')
 const translationLoading = ref(false)
 const translationError = ref('')
+const emojiPickerOpen = ref(false)
+const senderRef = ref(null)
 let translationRequestId = 0
 
 watch(
@@ -72,6 +75,17 @@ watch(() => props.defaultTargetLang, (value) => {
   targetLang.value = value || 'zh-CN'
   clearTranslationState()
 })
+watch(() => props.disabled, (value) => {
+  if (value) emojiPickerOpen.value = false
+})
+
+function onDocumentPointerDown(event) {
+  if (emojiPickerOpen.value && !senderRef.value?.contains(event.target)) {
+    emojiPickerOpen.value = false
+  }
+}
+document.addEventListener('pointerdown', onDocumentPointerDown)
+onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocumentPointerDown))
 
 function autoResize() {
   nextTick(() => {
@@ -131,6 +145,10 @@ function clearTranslationState() {
 }
 
 function onKeydown(e) {
+  if (e.key === 'Escape' && emojiPickerOpen.value) {
+    emojiPickerOpen.value = false
+    return
+  }
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
     submit()
@@ -164,8 +182,31 @@ function submit() {
 function onAttachClick() {
   fileInput.value?.click()
 }
-// 工具栏占位 —— 仅 attach 真正触发文件选择，其他先打 noop 等待后续接入
-function onEmojiClick() { /* TODO: emoji picker */ }
+function onEmojiClick() {
+  if (props.disabled) return
+  emojiPickerOpen.value = !emojiPickerOpen.value
+}
+
+function insertEmoji(emoji) {
+  const el = textareaRef.value
+  const start = el?.selectionStart ?? text.value.length
+  const end = el?.selectionEnd ?? start
+  text.value = `${text.value.slice(0, start)}${emoji}${text.value.slice(end)}`
+  clearTranslationState()
+  autoResize()
+  nextTick(() => {
+    el?.focus()
+    const caret = start + emoji.length
+    el?.setSelectionRange(caret, caret)
+  })
+}
+
+function selectSticker(sticker) {
+  emojiPickerOpen.value = false
+  emit('sticker', sticker)
+  nextTick(() => textareaRef.value?.focus())
+}
+
 function onImageClick() { onAttachClick() }
 function onVoiceClick() { /* TODO: voice input */ }
 function onQuickReplyClick() { /* TODO: quick replies */ }
@@ -194,7 +235,7 @@ function onPaste(e) {
 </script>
 
 <template>
-  <div class="jm-sender">
+  <div ref="senderRef" class="jm-sender">
     <div class="jm-sender__input-wrap">
       <div v-if="translationEnabled && (translationLoading || translationPreview || translationError)" class="jm-sender__translation-preview">
         <div v-if="translationLoading" class="jm-sender__translation-loading">翻译中...</div>
@@ -225,15 +266,16 @@ function onPaste(e) {
       ></textarea>
       <div class="jm-sender__bar">
         <div class="jm-sender__tools">
-          <!-- <button
+          <button
             class="jm-sender__tool-btn"
+            :class="{ 'is-active': emojiPickerOpen }"
             type="button"
             :disabled="disabled"
             title="表情"
             @click="onEmojiClick"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
-          </button> -->
+          </button>
           <button
             class="jm-sender__tool-btn"
             type="button"
@@ -279,6 +321,12 @@ function onPaste(e) {
           >发送</button>
         </div>
       </div>
+      <MessageEmojiStickerPicker
+        v-if="emojiPickerOpen"
+        :disabled="disabled"
+        @emoji="insertEmoji"
+        @sticker="selectSticker"
+      />
     </div>
   </div>
 </template>
@@ -294,6 +342,7 @@ function onPaste(e) {
 
 /* 输入框外层 —— 边框、圆角、聚焦态主色边框、bg-soft 底 */
 .jm-sender__input-wrap {
+  position: relative;
   border: 1px solid var(--border);
   border-radius: var(--r);
   padding: 6px 8px;
@@ -375,6 +424,11 @@ function onPaste(e) {
 .jm-sender__tool-btn:hover:not(:disabled) {
   background: var(--bg-mute);
   color: var(--text-1);
+}
+
+.jm-sender__tool-btn.is-active {
+  background: var(--primary-soft);
+  color: var(--primary);
 }
 
 .jm-sender__tool-btn:disabled {

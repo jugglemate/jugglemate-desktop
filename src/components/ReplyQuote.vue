@@ -8,6 +8,7 @@
 
 import { computed } from 'vue'
 import im from '../common/im'
+import { MSG_NAME } from '../common/enum'
 
 const props = defineProps({
   message: {
@@ -34,6 +35,7 @@ const preview = computed(() => {
   if (m.name === MessageType.FILE) return `${senderName}：[文件] ${c.name || ''}`
   if (m.name === MessageType.VIDEO) return `${senderName}：[视频]`
   if (m.name === MessageType.VOICE) return `${senderName}：[语音]`
+  if (m.name === MSG_NAME.ANIMATION_STICKER) return `${senderName}：[表情]`
   return senderName
 })
 </script>

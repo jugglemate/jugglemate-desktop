@@ -30,6 +30,7 @@ import {
   isTranslatableMessage,
   translateMessage
 } from '../services/message-translation'
+import { normalizeStickerContent } from '../common/stickers'
 
 const props = defineProps({
   conversation: {
@@ -623,6 +624,53 @@ async function onSend(text) {
   await sendText(text)
 }
 
+async function onSendSticker(rawContent) {
+  if (!isAssignedConversation.value && !isContactChat.value) {
+    showClaimBanner.value = true
+    return
+  }
+  if (!props.conversation || !juggle || !im.isConnected()) {
+    toast.error('当前未连接，无法发送动画表情')
+    return
+  }
+  const content = normalizeStickerContent(rawContent)
+  if (!content) {
+    toast.error('无效的动画表情')
+    return
+  }
+  sendEndTyping()
+  const base = buildBaseMessage(MSG_NAME.ANIMATION_STICKER, content)
+  const optimistic = {
+    ...base,
+    sentState: SentState.SENDING,
+    sentTime: Date.now()
+  }
+  imMessages.push(optimistic)
+  scrollToBottom()
+  try {
+    const { sentTime, messageId, messageIndex } = await juggle.sendMessage(base, {
+      onbefore: (message) => {
+        const idx = imMessages.findIndex((m) => m.tid === optimistic.tid)
+        if (idx >= 0) {
+          Object.assign(imMessages[idx], message, {
+            sentState: SentState.SENDING,
+            sentTime: message.sentTime || Date.now()
+          })
+        }
+      }
+    })
+    const idx = imMessages.findIndex((m) => m.tid === optimistic.tid)
+    if (idx >= 0) {
+      Object.assign(imMessages[idx], { sentTime, messageId, messageIndex, sentState: SentState.SUCCESS })
+    }
+  } catch (error) {
+    const idx = imMessages.findIndex((m) => m.tid === optimistic.tid)
+    if (idx >= 0) Object.assign(imMessages[idx], { sentState: SentState.FAILED })
+    console.warn('[ChatMain] send sticker failed', error)
+    toast.error('动画表情发送失败，可点击重试')
+  }
+}
+
 function canSendTyping() {
   if (!props.conversation || isCurrentGroup.value) return false
   return !!(juggle && im.isConnected())
@@ -684,7 +732,8 @@ function onResend(message) {
       conversationType: imMessages[idx].conversationType,
       conversationId: imMessages[idx].conversationId,
       name: imMessages[idx].name || MessageType.TEXT,
-      content: imMessages[idx].content
+      content: imMessages[idx].content,
+      tid: imMessages[idx].tid
     })
     .then(({ sentTime, messageId, messageIndex }) => {
       Object.assign(imMessages[idx], {
@@ -1782,6 +1831,7 @@ defineExpose({ notifyTransferResult, openTransfer })
       @focus="onComposerFocus"
       @blur="sendEndTyping"
       @send="onSend"
+      @sticker="onSendSticker"
       @attach="onAttach"
     />
 
